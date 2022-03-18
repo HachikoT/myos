@@ -47,7 +47,7 @@ static void read_seg(uintptr_t va, uint32_t count, uint32_t offset) {
 // bootmain入口函数，加载elf格式的内核代码
 void boot_main(void) {
     // elf头存储在0x10000处
-    struct elfhdr* elf_hdr = ((struct elfhdr *)0x10000);
+    struct elf_header *elf_hdr = ((struct elf_header *)0x10000);
 
     // 读取第1页（4K）内核数据
     read_seg((uintptr_t)elf_hdr, SECTOR_SIZE * 8, 0);
@@ -58,8 +58,8 @@ void boot_main(void) {
     }
 
     // 加载每一个程序段（忽略ph flags）
-    struct proghdr *ph, *end_ph;
-    ph = (struct proghdr *)((uintptr_t)elf_hdr + elf_hdr->e_phoff);
+    struct prog_header *ph, *end_ph;
+    ph = (struct prog_header *)((uintptr_t)elf_hdr + elf_hdr->e_phoff);
     end_ph = ph + elf_hdr->e_phnum;
     for (; ph < end_ph; ph++) {
         read_seg(ph->p_va & 0xFFFFFF, ph->p_memsz, ph->p_offset);
