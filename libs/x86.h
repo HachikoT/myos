@@ -35,4 +35,26 @@ static inline void insl(uint32_t port, void *addr, int cnt) {
     );
 }
 
+// 使能中断
+static inline void sti(void) {
+    asm volatile ("sti");
+}
+
+// 禁止中断
+static inline void cli(void) {
+    asm volatile ("cli");
+}
+
+/* Pseudo-descriptors used for LGDT, LLDT(not used) and LIDT instructions. */
+// lgdt lidt命令的参数格式，末尾的packed表示紧凑模式，不用内存对齐导致格式对不上
+struct pseudo_desc {
+    uint16_t pd_lim;         // Limit
+    uint32_t pd_base;        // Base address
+} __attribute__ ((packed));
+
+// 将中断向量表地址记录到IDTR寄存器
+static inline void lidt(struct pseudo_desc *pd) {
+    asm volatile ("lidt (%0)" :: "r" (pd));
+}
+
 #endif /* !__LIBS_X86_H__ */
