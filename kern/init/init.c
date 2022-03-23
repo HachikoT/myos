@@ -6,6 +6,8 @@
 // 内核入口
 void kern_init(void) {
 
+    pmm_init();         // 初始化物理内存管理
+
     pic_init()          // 初始化可编程中断控制器
     idt_init()          // 初始化中断描述符表
     intr_enable();      // 使能中断
