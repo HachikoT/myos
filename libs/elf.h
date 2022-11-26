@@ -3,12 +3,13 @@
 
 #include "libs/defs.h"
 
-#define ELF_MAGIC    0x464C457FU            // "\x7FELF" in little endian
+#define ELF_MAGIC 0x464C457FU // "0x7F+ELF" in little endian
 
 /* file header */
-struct elf_header {
-    uint32_t e_magic;     // must equal ELF_MAGIC
-    uint8_t  e_elf[12];
+struct elf32_header
+{
+    uint32_t e_magic;
+    uint8_t e_elf[12];
     uint16_t e_type;      // 1=relocatable, 2=executable, 3=shared object, 4=core image
     uint16_t e_machine;   // 3=x86, 4=68K, etc.
     uint32_t e_version;   // file version, always 1
@@ -25,7 +26,8 @@ struct elf_header {
 };
 
 /* program section header */
-struct prog_header {
+struct elf32_phdr
+{
     uint32_t p_type;   // loadable code or data, dynamic linking info,etc.
     uint32_t p_offset; // file offset of segment
     uint32_t p_va;     // virtual address to map segment

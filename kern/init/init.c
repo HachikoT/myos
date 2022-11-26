@@ -1,22 +1,44 @@
-#include "libs/defs.h"
-#include "kern/driver/intr.h"
-#include "kern/driver/picirq.h"
-#include "kern/trap/trap.h"
+#include <defs.h>
+#include <stdio.h>
+#include <string.h>
+#include <console.h>
+#include <kdebug.h>
+#include <picirq.h>
+#include <trap.h>
+#include <clock.h>
+#include <intr.h>
+#include <kmonitor.h>
+
+#include "libs/string.h"
+#include "kern/debug/kdebug.h"
+#include "kern/mm/pmm.h"
+
+void grade_backtrace(void);
+static void lab1_switch_test(void);
 
 // 内核入口
-void kern_init(void) {
+void kern_init(void)
+{
+    extern char edata[], end[];
+    memset(edata, 0, end - edata);
 
-    pmm_init();         // 初始化物理内存管理
+    cons_init(); // init the console
 
-    pic_init()          // 初始化可编程中断控制器
-    idt_init()          // 初始化中断描述符表
+    const char *message = "(THU.CST) os is loading ...";
+    cprintf("%s\n\n", message);
 
-    vmm_init();
-    ide_init();                 // init ide devices
-    swap_init();                // init swap
+    print_kerninfo();
 
-    intr_enable();      // 使能中断
+    pmm_init(); // init physical memory management
 
-    // 死循环
-    while (true) {}
+    pic_init(); // init interrupt controller
+    idt_init(); // init interrupt descriptor table
+
+    clock_init();  // init clock interrupt
+    intr_enable(); // enable irq interrupt
+
+    /* do nothing */
+    while (1)
+    {
+    }
 }
