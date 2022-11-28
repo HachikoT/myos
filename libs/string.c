@@ -1,5 +1,4 @@
 #include "libs/string.h"
-#include <x86.h>
 
 /* *
  * strlen - calculate the length of the string @s, not including

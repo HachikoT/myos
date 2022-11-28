@@ -60,7 +60,7 @@ struct pushregs
     uint32_t reg_eax;
 };
 
-struct trapframe
+struct trap_frame
 {
     struct pushregs tf_regs;
     uint16_t tf_gs;
@@ -85,8 +85,8 @@ struct trapframe
 } __attribute__((packed));
 
 void idt_init(void);
-void print_trapframe(struct trapframe *tf);
+void print_trapframe(struct trap_frame *tf);
 void print_regs(struct pushregs *regs);
-bool trap_in_kernel(struct trapframe *tf);
+bool trap_in_kernel(struct trap_frame *tf);
 
 #endif /* !__KERN_TRAP_TRAP_H__ */

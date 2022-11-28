@@ -1,5 +1,6 @@
 #include "libs/defs.h"
 #include "libs/x86.h"
+#include "libs/string.h"
 #include "kern/driver/picirq.h"
 #include "kern/trap/trap.h"
 #include "kern/driver/kbdreg.h"

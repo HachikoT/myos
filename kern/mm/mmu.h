@@ -1,6 +1,8 @@
 #ifndef __KERN_MM_MMU_H__
 #define __KERN_MM_MMU_H__
 
+#include "libs/defs.h"
+
 /* Eflags register */
 #define FL_CF 0x00000001        // Carry Flag
 #define FL_PF 0x00000004        // Parity Flag
@@ -46,8 +48,8 @@
 #define STS_IG32 0xE // 32-bit Interrupt Gate
 #define STS_TG32 0xF // 32-bit Trap Gate
 
-/* Gate descriptors for interrupts and traps */
-struct gatedesc
+// 中断或陷阱描述符类型
+struct gate_desc
 {
     unsigned gd_off_15_0 : 16;  // low 16 bits of offset in segment
     unsigned gd_ss : 16;        // segment selector
@@ -69,9 +71,9 @@ struct gatedesc
  *          for software to invoke this interrupt/trap gate explicitly
  *          using an int instruction.
  * */
-#define SETGATE(gate, istrap, sel, off, dpl)             \
+#define SET_GATE(gate, istrap, sel, off, dpl)            \
     {                                                    \
-        (gate).gd_off_15_0 = (uint32_t)(off)&0xffff;     \
+        (gate).gd_off_15_0 = off & 0xffff;               \
         (gate).gd_ss = (sel);                            \
         (gate).gd_args = 0;                              \
         (gate).gd_rsv1 = 0;                              \
@@ -79,7 +81,7 @@ struct gatedesc
         (gate).gd_s = 0;                                 \
         (gate).gd_dpl = (dpl);                           \
         (gate).gd_p = 1;                                 \
-        (gate).gd_off_31_16 = (uint32_t)(off) >> 16;     \
+        (gate).gd_off_31_16 = off >> 16;                 \
     }
 
 /* Set up a call gate descriptor */
@@ -97,7 +99,7 @@ struct gatedesc
     }
 
 /* segment descriptors */
-struct segdesc
+struct seg_desc
 {
     unsigned sd_lim_15_0 : 16;  // low bits of segment limit
     unsigned sd_base_15_0 : 16; // low bits of segment base address
@@ -115,10 +117,10 @@ struct segdesc
 };
 
 #define SEG_NULL \
-    (struct segdesc) { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+    (struct seg_desc) { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 
-#define SEG(type, base, lim, dpl)                   \
-    (struct segdesc)                                \
+#define SEG_DESC(type, base, lim, dpl)              \
+    (struct seg_desc)                               \
     {                                               \
         ((lim) >> 12) & 0xffff, (base)&0xffff,      \
             ((base) >> 16) & 0xff, type, 1, dpl, 1, \
@@ -126,8 +128,8 @@ struct segdesc
             (unsigned)(base) >> 24                  \
     }
 
-#define SEG16(type, base, lim, dpl)                 \
-    (struct segdesc)                                \
+#define SEG_1M_DESC(type, base, lim, dpl)           \
+    (struct seg_desc)                               \
     {                                               \
         (lim) & 0xffff, (base)&0xffff,              \
             ((base) >> 16) & 0xff, type, 1, dpl, 1, \
@@ -136,7 +138,7 @@ struct segdesc
     }
 
 /* task state segment format (as described by the Pentium architecture book) */
-struct taskstate
+struct task_state
 {
     uint32_t ts_link;  // old ts selector
     uintptr_t ts_esp0; // stack pointers and segment selectors

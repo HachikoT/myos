@@ -1,10 +1,9 @@
-#include <defs.h>
-#include <x86.h>
-#include <mmu.h>
-#include <memlayout.h>
-#include <pmm.h>
-
 #include "kern/mm/pmm.h"
+#include "kern/mm/mmu.h"
+#include "kern/mm/memlayout.h"
+#include "libs/x86.h"
+#include "libs/defs.h"
+#include "kern/driver/stdio.h"
 
 /* *
  * Task State Segment:
@@ -26,7 +25,7 @@
  * mode, the x86 CPU will look in the TSS for SS0 and ESP0 and load their value
  * into SS and ESP respectively.
  * */
-static struct taskstate ts = {0};
+static struct task_state ts;
 
 /* *
  * Global Descriptor Table:
@@ -41,60 +40,54 @@ static struct taskstate ts = {0};
  *   - 0x20:  user data segment
  *   - 0x28:  defined for tss, initialized in gdt_init
  * */
-static struct segdesc gdt[] = {
+static struct seg_desc gdt[] = {
     SEG_NULL,
-    [SEG_KTEXT] = SEG(STA_X | STA_R, 0x0, 0xFFFFFFFF, DPL_KERNEL),
-    [SEG_KDATA] = SEG(STA_W, 0x0, 0xFFFFFFFF, DPL_KERNEL),
-    [SEG_UTEXT] = SEG(STA_X | STA_R, 0x0, 0xFFFFFFFF, DPL_USER),
-    [SEG_UDATA] = SEG(STA_W, 0x0, 0xFFFFFFFF, DPL_USER),
-    [SEG_TSS] = SEG_NULL,
-};
+    [SEG_KTEXT] = SEG_DESC(STA_X | STA_R, 0x0, 0xFFFFFFFF, DPL_KERNEL),
+    [SEG_KDATA] = SEG_DESC(STA_W, 0x0, 0xFFFFFFFF, DPL_KERNEL),
+    [SEG_UTEXT] = SEG_DESC(STA_X | STA_R, 0x0, 0xFFFFFFFF, DPL_USER),
+    [SEG_UDATA] = SEG_DESC(STA_W, 0x0, 0xFFFFFFFF, DPL_USER),
+    [SEG_TSS] = SEG_NULL};
 
-static struct pseudodesc gdt_pd = {
-    sizeof(gdt) - 1, (uint32_t)gdt};
+static struct dt_desc gdt_dt = {sizeof(gdt) - 1, (uint32_t)gdt};
 
 /* *
  * lgdt - load the global descriptor table register and reset the
  * data/code segement registers for kernel.
  * */
-static inline void
-lgdt(struct pseudodesc *pd)
+static inline void lgdt(struct dt_desc *dt)
 {
-    asm volatile("lgdt (%0)" ::"r"(pd));
-    asm volatile("movw %%ax, %%gs" ::"a"(USER_DS));
-    asm volatile("movw %%ax, %%fs" ::"a"(USER_DS));
-    asm volatile("movw %%ax, %%es" ::"a"(KERNEL_DS));
-    asm volatile("movw %%ax, %%ds" ::"a"(KERNEL_DS));
-    asm volatile("movw %%ax, %%ss" ::"a"(KERNEL_DS));
+    __asm__ __volatile__("lgdt (%0)" ::"r"(dt));
+    __asm__ __volatile__("movw %%ax, %%gs" ::"a"(USER_DS));
+    __asm__ __volatile__("movw %%ax, %%fs" ::"a"(USER_DS));
+    __asm__ __volatile__("movw %%ax, %%es" ::"a"(KERNEL_DS));
+    __asm__ __volatile__("movw %%ax, %%ds" ::"a"(KERNEL_DS));
+    __asm__ __volatile__("movw %%ax, %%ss" ::"a"(KERNEL_DS));
     // reload cs
-    asm volatile("ljmp %0, $1f\n 1:\n" ::"i"(KERNEL_CS));
+    __asm__ __volatile__("ljmp %0, $1f\n 1:\n" ::"i"(KERNEL_CS));
 }
 
-/* temporary kernel stack */
+// 临时内核栈空间
 uint8_t stack0[1024];
 
-/* gdt_init - initialize the default GDT and TSS */
-static void
-gdt_init(void)
+// 初始化全局描述符表GDT和任务状态段TSS
+static void gdt_init(void)
 {
-    // Setup a TSS so that we can get the right stack when we trap from
-    // user to the kernel. But not safe here, it's only a temporary value,
-    // it will be set to KSTACKTOP in lab2.
+    // 当中断需要提权时，会切换堆栈，比如提升到ring0，那么就会切换到TSS中的esp0和ss0
     ts.ts_esp0 = (uint32_t)&stack0 + sizeof(stack0);
     ts.ts_ss0 = KERNEL_DS;
 
-    // initialize the TSS filed of the gdt
-    gdt[SEG_TSS] = SEG16(STS_T32A, (uint32_t)&ts, sizeof(ts), DPL_KERNEL);
+    // initialize the TSS field of the gdt
+    gdt[SEG_TSS] = SEG_1M_DESC(STS_T32A, (uint32_t)&ts, sizeof(ts), DPL_KERNEL);
     gdt[SEG_TSS].sd_s = 0;
 
     // reload all segment registers
-    lgdt(&gdt_pd);
+    lgdt(&gdt_dt);
 
     // load the TSS
     ltr(GD_TSS);
 }
 
-/* pmm_init - initialize the physical memory management */
+// 初始化物理内存管理
 void pmm_init(void)
 {
     gdt_init();

@@ -48,18 +48,44 @@ static inline void cli(void)
     __asm__ __volatile__("cli");
 }
 
-/* Pseudo-descriptors used for LGDT, LLDT(not used) and LIDT instructions. */
-// lgdt lidt命令的参数格式，末尾的packed表示紧凑模式，不用内存对齐导致格式对不上
-struct pseudo_desc
+// 用来描述gdt和idt和ldt表信息，packed表示紧凑模式，不进行内存对齐
+struct dt_desc
 {
-    uint16_t pd_lim;  // Limit
-    uint32_t pd_base; // Base address
+    uint16_t dt_lim;  // Limit
+    uint32_t dt_base; // Base address
 } __attribute__((packed));
 
 // 将中断向量表地址记录到IDTR寄存器
-static inline void lidt(struct pseudo_desc *pd)
+static inline void lidt(struct dt_desc *pd)
 {
     __asm__ __volatile__("lidt (%0)" ::"r"(pd));
 }
+
+// 设置任务状态段选择子
+static inline void ltr(uint16_t sel)
+{
+    __asm__ __volatile__("ltr %0" ::"r"(sel));
+}
+
+#define do_div(n, base) ({                               \
+    unsigned long __upper, __low, __high, __mod, __base; \
+    __base = (base);                                     \
+    __asm__(""                                           \
+            : "=a"(__low), "=d"(__high)                  \
+            : "A"(n));                                   \
+    __upper = __high;                                    \
+    if (__high != 0)                                     \
+    {                                                    \
+        __upper = __high % __base;                       \
+        __high = __high / __base;                        \
+    }                                                    \
+    __asm__("divl %2"                                    \
+            : "=a"(__low), "=d"(__mod)                   \
+            : "rm"(__base), "0"(__low), "1"(__upper));   \
+    __asm__(""                                           \
+            : "=A"(n)                                    \
+            : "a"(__low), "d"(__high));                  \
+    __mod;                                               \
+})
 
 #endif /* !__LIBS_X86_H__ */
