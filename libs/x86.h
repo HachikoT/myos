@@ -88,4 +88,90 @@ static inline void ltr(uint16_t sel)
     __mod;                                               \
 })
 
+// 读取eflags寄存器的值
+static inline uint32_t read_eflags(void)
+{
+    uint32_t eflags;
+    __asm__ __volatile__("pushfl; popl %0"
+                         : "=r"(eflags));
+    return eflags;
+}
+
+/* Eflags register */
+#define FL_CF 0x00000001        // Carry Flag
+#define FL_PF 0x00000004        // Parity Flag
+#define FL_AF 0x00000010        // Auxiliary carry Flag
+#define FL_ZF 0x00000040        // Zero Flag
+#define FL_SF 0x00000080        // Sign Flag
+#define FL_TF 0x00000100        // Trap Flag
+#define FL_IF 0x00000200        // Interrupt Flag
+#define FL_DF 0x00000400        // Direction Flag
+#define FL_OF 0x00000800        // Overflow Flag
+#define FL_IOPL_MASK 0x00003000 // I/O Privilege Level bitmask
+#define FL_IOPL_0 0x00000000    //   IOPL == 0
+#define FL_IOPL_1 0x00001000    //   IOPL == 1
+#define FL_IOPL_2 0x00002000    //   IOPL == 2
+#define FL_IOPL_3 0x00003000    //   IOPL == 3
+#define FL_NT 0x00004000        // Nested Task
+#define FL_RF 0x00010000        // Resume Flag
+#define FL_VM 0x00020000        // Virtual 8086 mode
+#define FL_AC 0x00040000        // Alignment Check
+#define FL_VIF 0x00080000       // Virtual Interrupt Flag
+#define FL_VIP 0x00100000       // Virtual Interrupt Pending
+#define FL_ID 0x00200000        // ID flag
+
+static inline void
+lcr0(uintptr_t cr0)
+{
+    __asm__ __volatile__("mov %0, %%cr0" ::"r"(cr0)
+                         : "memory");
+}
+
+static inline void lcr3(uintptr_t cr3)
+{
+    __asm__ __volatile__("mov %0, %%cr3" ::"r"(cr3)
+                         : "memory");
+}
+
+static inline uintptr_t
+rcr0(void)
+{
+    uintptr_t cr0;
+    __asm__ __volatile__("mov %%cr0, %0"
+                         : "=r"(cr0)::"memory");
+    return cr0;
+}
+
+static inline uintptr_t
+rcr1(void)
+{
+    uintptr_t cr1;
+    __asm__ __volatile__("mov %%cr1, %0"
+                         : "=r"(cr1)::"memory");
+    return cr1;
+}
+
+static inline uintptr_t
+rcr2(void)
+{
+    uintptr_t cr2;
+    __asm__ __volatile__("mov %%cr2, %0"
+                         : "=r"(cr2)::"memory");
+    return cr2;
+}
+
+static inline uintptr_t rcr3(void)
+{
+    uintptr_t cr3;
+    __asm__ __volatile__("mov %%cr3, %0"
+                         : "=r"(cr3)::"memory");
+    return cr3;
+}
+
+static inline void invlpg(void *addr)
+{
+    __asm__ __volatile__("invlpg (%0)" ::"r"(addr)
+                         : "memory");
+}
+
 #endif /* !__LIBS_X86_H__ */

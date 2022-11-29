@@ -20,8 +20,8 @@ all:$(TARGET)
 # 生成构建目标
 $(TARGET):$(OBJS) | $(LIB_DIR)
 	@echo -e "\e[36m""Linking executable $(TARGET)""\e[0m"
-	@$(LD) $(LDFLAGS) -N -e start -Ttext 0x7C00 $^ -o $@
-	@objcopy -S -R .eh_frame -R .comment -O binary $@
+	@$(LD) $(LDFLAGS) -N -T $(TOP_DIR)/scripts/boot.ld $^ -o $@
+	@objcopy -S -O binary $@
 
 # 生成中间目标文件
 $(OBJ_DIR)/%.o:$(SRC_DIR)/%.S | $(OBJ_DIR) $(DEP_DIR)

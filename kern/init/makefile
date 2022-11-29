@@ -5,7 +5,7 @@ OBJ_DIR := $(BUILD_DIR)/$(MODULE)/obj
 LIB_DIR := $(BUILD_DIR)/$(MODULE)/lib
 
 # 源文件以及中间目标文件和依赖文件
-SRCS := $(notdir $(wildcard $(SRC_DIR)/*.c))
+SRCS := $(notdir $(wildcard $(SRC_DIR)/*.S $(SRC_DIR)/*.c))
 OBJS := $(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(basename $(SRCS))))
 DEPS := $(addprefix $(DEP_DIR)/, $(addsuffix .d, $(basename $(SRCS))))
 
@@ -23,6 +23,10 @@ $(TARGET):$(OBJS) | $(LIB_DIR)
 	@$(AR) $(ARFLAGS) $@ $^
 
 # 生成中间目标文件
+$(OBJ_DIR)/%.o:$(SRC_DIR)/%.S | $(OBJ_DIR) $(DEP_DIR)
+	@echo -e "\e[33m""Building object $@""\e[0m"
+	@$(CC) -c $(DEPFLAGS) $(CFLAGS) -o $@ $<
+
 $(OBJ_DIR)/%.o:$(SRC_DIR)/%.c | $(OBJ_DIR) $(DEP_DIR)
 	@echo -e "\e[33m""Building object $@""\e[0m"
 	@$(CC) -c $(DEPFLAGS) $(CFLAGS) -o $@ $<

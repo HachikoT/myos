@@ -98,6 +98,16 @@ struct gate_desc
         (gate).gd_off_31_16 = (uint32_t)(off) >> 16; \
     }
 
+// 段描述符定义（汇编）
+#define SEG_NULL_ASM \
+    .word 0, 0;      \
+    .byte 0, 0, 0, 0
+
+#define SEG_DESC_ASM(type, base, lim)               \
+    .word(((lim) >> 12) & 0xffff), ((base)&0xffff); \
+    .byte(((base) >> 16) & 0xff), (0x90 | (type)),  \
+        (0xC0 | (((lim) >> 28) & 0xf)), (((base) >> 24) & 0xff)
+
 /* segment descriptors */
 struct seg_desc
 {

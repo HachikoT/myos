@@ -6,7 +6,7 @@ export TOP_DIR BUILD_DIR BIN_DIR
 
 # 编译器
 CC := gcc
-CFLAGS := -Wall -g -O2 -m32 -std=c99 -fno-builtin -nostdinc -fno-stack-protector -I $(TOP_DIR)
+CFLAGS := -Wall -g -O2 -m32 -std=gnu99 -fno-builtin -nostdinc -fno-stack-protector -I $(TOP_DIR)
 export CC CFLAGS
 
 # 链接

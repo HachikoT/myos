@@ -1,10 +1,11 @@
-#include "boot/boot/boot_asm.h"
+#include "libs/descriptor.h"
 
 .set PROT_MODE_CSEG,        0x8                     // 代码段选择子
 .set PROT_MODE_DSEG,        0x10                    // 数据段选择子
 .set CR0_PE_ON,             0x1                     // 保护模式使能位（CR0寄存器的第0位）
+.set SMAP,                  0x534d4150              // 4个ASCII字符“SMAP”
 
-// BIOS会加载第一个扇区（512Byte）的数据作为bootloader，将其加载到0x7c00处，CS:IP设置为0:0x7c00，跳转到该处执行
+// BIOS会加载第一个扇区（512Byte）的数据作为bootloader，将其加载到0x7c00处，并将CS:IP设置为0:0x7c00，跳转到该处执行
 // 需要在链接的时候确保start的地址为0x7c00，使其作为bootloader的入口函数
 .globl start
 start:
@@ -41,6 +42,29 @@ enable_a20.2:
     movb $0xdf, %al                                 // 0xdf -> port 0x60
     outb %al, $0x60                                 // 0xdf = 11011111, means set P2's A20 bit(the 1 bit) to 1
 
+    // 探测物理内存布局，使用e820方式
+probe_memory:
+    movl $0, 0x8000         // 操作内存地址为0x8000的e820map对象，第一个字段设置为0，表示当前已探测到的内存块数量
+    xorl %ebx, %ebx         // ebx设置为0，表示当前要探测的内存块序号，探测完成之后会自动加1
+    movw $0x8004, %di       // es:di指向的地址用来存放探测到的内存块属性
+start_probe:
+    movl $0xE820, %eax      // 设置eax，表示以e820方式进行探测
+    movl $20, %ecx          // 内存块属性对象的大小，这里为20字节
+    movl $SMAP, %edx        // 设置edx为534D4150h (即4个ASCII字符“SMAP”)，这是一个约定
+    int $0x15               // 进行中断
+    // 若eflags的CF位为0，则表示探测成功
+    jnc cont
+    // 若eflags的CF位为1，则表示探测失败
+    movl $12345, 0x8000
+    jmp finish_probe
+cont:
+    addw $20, %di           // 给di加上20字节，为下次探测做准备
+    incl 0x8000             // 给e820map对象的第一个计数字段加1
+    // 若ebx为0，表示探测完了
+    cmpl $0, %ebx
+    jnz start_probe
+finish_probe:
+
     // 将全局描述符表的地址存储到GDTR寄存器
     // 使能保护模式
     lgdt gdt_desc
@@ -75,7 +99,7 @@ spin:
     jmp spin
 
 // 全局描述符表
-.p2align 2                                          // 强制4字节对齐
+.p2align 2                                          // 4字节对齐
 gdt:
     SEG_NULL_ASM                                    // 第0项，null段描述符
     SEG_DESC_ASM(STA_X | STA_R, 0x0, 0xffffffff)    // 第1项（可执行/可读代码段，基址为0，范围4GB）

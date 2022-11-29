@@ -5,6 +5,7 @@
 #include "kern/trap/trap.h"
 #include "kern/driver/kbdreg.h"
 #include "kern/driver/stdio.h"
+#include "kern/mm/memlayout.h"
 
 /***** Serial I/O code *****/
 #define COM1 0x3F8
@@ -30,9 +31,9 @@
 #define COM_LSR_TSRE 0x40  // Transmitter off
 
 #define MONO_BASE 0x3B4
-#define MONO_BUF 0xB0000
+#define MONO_BUF (0xB0000 + KERN_BASE)
 #define CGA_BASE 0x3D4
-#define CGA_BUF 0xB8000
+#define CGA_BUF (0xB8000 + KERN_BASE)
 #define CRT_ROWS 25
 #define CRT_COLS 80
 #define CRT_SIZE (CRT_ROWS * CRT_COLS)
