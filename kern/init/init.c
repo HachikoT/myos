@@ -6,13 +6,15 @@
 #include "kern/trap/trap.h"
 #include "kern/driver/clock.h"
 #include "kern/driver/intr.h"
+#include "kern/mm/vmm.h"
+#include "kern/driver/ide.h"
 
 // 内核入口
 void kern_init(void)
 {
-    // bss段初始化清0
-    extern char bss_start[], bss_end[];
-    memset(bss_start, 0, bss_end - bss_start);
+    // bss段数据初始化清0
+    extern char __bss_start[], __bss_end[];
+    memset(__bss_start, 0, __bss_end - __bss_start);
 
     cons_init(); // init the console
 
@@ -23,6 +25,11 @@ void kern_init(void)
 
     pic_init(); // 初始化中断控制器
     idt_init(); // init interrupt descriptor table
+
+    vmm_init(); // init virtual memory management
+
+    ide_init();  // init ide devices
+    swap_init(); // init swap
 
     clock_init();  // init clock interrupt
     intr_enable(); // enable irq interrupt

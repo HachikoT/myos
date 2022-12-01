@@ -11,6 +11,8 @@ void cputchar(int c);
 int cputs(const char *str);
 int getchar(void);
 
+char *readline(const char *prompt);
+
 /* libs/printfmt.c */
 void printfmt(void (*putch)(int, void *), void *putdat, const char *fmt, ...);
 void vprintfmt(void (*putch)(int, void *), void *putdat, const char *fmt, va_list ap);

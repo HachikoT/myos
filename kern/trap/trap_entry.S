@@ -1,4 +1,4 @@
-#include "kern/mm/memlayout.h"
+#include "kern/mm/mem_layout.h"
 
 # vectors.S sends all traps here.
 .text

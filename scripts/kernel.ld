@@ -44,12 +44,12 @@ SECTIONS {
 	PROVIDE(edata = .);
 
 	.bss : {
-		PROVIDE(bss_start = .);
+		PROVIDE(__bss_start = .);
 		*(.bss);
-		PROVIDE(bss_end = .);
+		PROVIDE(__bss_end = .);
 	}
 
-	PROVIDE(end = .);
+	PROVIDE(__ekernel = .);
 
 	/DISCARD/ : {
 		*(.eh_frame .note.GNU-stack)

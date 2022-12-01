@@ -29,7 +29,7 @@ boot:FORCE | $(BIN_DIR)
 	@$(BUILD_DIR)/sign/lib/sign $(BUILD_DIR)/boot/lib/boot $(BIN_DIR)/boot
 
 # kernel
-KERNEL_MODULES := init trap mm driver
+KERNEL_MODULES := init trap mm fs debug driver
 TOOL_LIB := $(BUILD_DIR)/libs/lib/liblibs.a
 KERNEL_LIBS := $(foreach n, $(KERNEL_MODULES), $(BUILD_DIR)/$(n)/lib/lib$(n).a)
 

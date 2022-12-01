@@ -5,7 +5,7 @@
 #include "kern/trap/trap.h"
 #include "kern/driver/kbdreg.h"
 #include "kern/driver/stdio.h"
-#include "kern/mm/memlayout.h"
+#include "kern/mm/mem_layout.h"
 
 /***** Serial I/O code *****/
 #define COM1 0x3F8

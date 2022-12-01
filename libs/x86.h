@@ -36,6 +36,16 @@ static inline void insl(uint32_t port, void *addr, int cnt)
         : "memory", "cc");
 }
 
+static inline void outsl(uint32_t port, const void *addr, int cnt)
+{
+    __asm__ __volatile__(
+        "cld;"
+        "repne; outsl;"
+        : "=S"(addr), "=c"(cnt)
+        : "d"(port), "0"(addr), "1"(cnt)
+        : "memory", "cc");
+}
+
 // 使能中断
 static inline void sti(void)
 {
@@ -119,6 +129,14 @@ static inline uint32_t read_eflags(void)
 #define FL_VIF 0x00080000       // Virtual Interrupt Flag
 #define FL_VIP 0x00100000       // Virtual Interrupt Pending
 #define FL_ID 0x00200000        // ID flag
+
+static inline uint32_t read_ebp(void)
+{
+    uint32_t ebp;
+    __asm__ __volatile__("movl %%ebp, %0"
+                         : "=r"(ebp));
+    return ebp;
+}
 
 static inline void
 lcr0(uintptr_t cr0)

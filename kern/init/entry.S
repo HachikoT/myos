@@ -1,13 +1,14 @@
 #include "libs/descriptor.h"
-#include "kern/mm/memlayout.h"
+#include "kern/mm/mem_layout.h"
 
 #define REALLOC(x) (x - KERN_BASE)
 
-// 内核入口函数
+// 内核入口函数，将内核重定向到高1GB的内存空间，在没开启页机制之前先临时用段机制来做重定向
+// 入口地址为0xC0100000，但实际加载到0x100000处，所以需要用段机制加上偏移-KERN_BASE
 .text
 .globl kern_entry
 kern_entry:
-    // 重新加载临时的gdt，段基址的偏移设定为-KERN_BASE，以便能正确运行
+    // 重新加载临时的gdt
     lgdt REALLOC(__gdt_desc)
     movw $KERNEL_DS, %ax
     movw %ax, %ds
