@@ -26,6 +26,8 @@ extern uintptr_t g_boot_cr3;
 extern struct page_desc *g_pages;
 extern size_t g_npage;
 
+extern char kern_stack[], kern_stack_top[];
+
 // 计算物理地址对应的页描述符
 static inline struct page_desc *pa2page(uintptr_t pa)
 {
@@ -82,7 +84,6 @@ struct page_desc *pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm);
 
 void pmm_init(void); // 初始化物理内存管理
 
-void *kmalloc(size_t n);
-void kfree(void *ptr, size_t n);
+void load_esp0(uintptr_t esp0);
 
 #endif /* !__KERN_MM_PMM_H__ */

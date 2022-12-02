@@ -10,6 +10,7 @@
 #include "libs/error.h"
 #include "kern/debug/assert.h"
 #include "kern/mm/swap.h"
+#include "kern/mm/kmalloc.h"
 
 // 当前物理内存管理器
 struct pmm_manager *g_pmm_mgr;
@@ -337,28 +338,8 @@ void pmm_init(void)
 
     // 这时可以取消临时的映射了
     g_boot_pgdir[0] = 0;
-}
 
-void *kmalloc(size_t n)
-{
-    void *ptr = NULL;
-    struct page_desc *base = NULL;
-    assert(n > 0 && n < 1024 * 0124);
-    int num_pages = (n + PG_SIZE - 1) / PG_SIZE;
-    base = alloc_pages(num_pages);
-    assert(base != NULL);
-    ptr = page2kva(base);
-    return ptr;
-}
-
-void kfree(void *ptr, size_t n)
-{
-    assert(n > 0 && n < 1024 * 0124);
-    assert(ptr != NULL);
-    struct page_desc *base = NULL;
-    int num_pages = (n + PG_SIZE - 1) / PG_SIZE;
-    base = kva2page(ptr);
-    free_pages(base, num_pages);
+    kmalloc_init();
 }
 
 // page_remove_pte - free an Page sturct which is related linear address la
@@ -445,4 +426,14 @@ struct page_desc *pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm)
     }
 
     return page;
+}
+
+/* *
+ * load_esp0 - change the ESP0 in default task state segment,
+ * so that we can use different kernel stack when we trap frame
+ * user to kernel.
+ * */
+void load_esp0(uintptr_t esp0)
+{
+    ts.ts_esp0 = esp0;
 }
