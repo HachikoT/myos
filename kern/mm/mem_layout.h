@@ -34,21 +34,36 @@
  *                            |         Empty Memory (*)        |
  *                            |                                 |
  *                            +---------------------------------+ 0xFB000000
- *                            |   Cur. Page Table (Kern, RW)    | RW/-- PT_SIZE
+ *                            |   Cur. Page Table (Kern, RW)    | RW/-- PTSIZE
  *     VPT -----------------> +---------------------------------+ 0xFAC00000
  *                            |        Invalid Memory (*)       | --/--
- *     KERN_TOP ------------> +---------------------------------+ 0xF8000000
+ *     KERNTOP -------------> +---------------------------------+ 0xF8000000
  *                            |                                 |
- *                            |    Remapped Physical Memory     | RW/-- KMEM_SIZE
+ *                            |    Remapped Physical Memory     | RW/-- KMEMSIZE
  *                            |                                 |
- *     KERN_BASE -----------> +---------------------------------+ 0xC0000000 (3GB)
+ *     KERNBASE ------------> +---------------------------------+ 0xC0000000
+ *                            |        Invalid Memory (*)       | --/--
+ *     USERTOP -------------> +---------------------------------+ 0xB0000000
+ *                            |           User stack            |
+ *                            +---------------------------------+
  *                            |                                 |
- *                            |                                 |
+ *                            :                                 :
+ *                            |         ~~~~~~~~~~~~~~~~        |
+ *                            :                                 :
  *                            |                                 |
  *                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ *                            |       User Program & Heap       |
+ *     UTEXT ---------------> +---------------------------------+ 0x00800000
+ *                            |        Invalid Memory (*)       | --/--
+ *                            |  - - - - - - - - - - - - - - -  |
+ *                            |    User STAB Data (optional)    |
+ *     USERBASE, USTAB------> +---------------------------------+ 0x00200000
+ *                            |        Invalid Memory (*)       | --/--
+ *     0 -------------------> +---------------------------------+ 0x00000000
  * (*) Note: The kernel ensures that "Invalid Memory" is *never* mapped.
  *     "Empty Memory" is normally unmapped, but user programs may map pages
  *     there if desired.
+ *
  * */
 
 #define KERN_BASE 0xC0000000
@@ -62,6 +77,21 @@
  * for the entire virtual address space into that 4 Meg region starting at VPT.
  * */
 #define VPT 0xFAC00000
+
+#define USERTOP 0xB0000000
+#define USTACKTOP USERTOP
+#define USTACKPAGE 256                    // # of pages in user stack
+#define USTACKSIZE (USTACKPAGE * PG_SIZE) // sizeof user stack
+
+#define USERBASE 0x00200000
+#define UTEXT 0x00800000 // where user programs generally begin
+#define USTAB USERBASE   // the location of the user STABS data structure
+
+#define USER_ACCESS(start, end) \
+    (USERBASE <= (start) && (start) < (end) && (end) <= USERTOP)
+
+#define KERN_ACCESS(start, end) \
+    (KERN_BASE <= (start) && (start) < (end) && (end) <= KERN_TOP)
 
 #define N_PDE_ENTRY 1024 // 页目录表项数量
 #define N_PTE_ENTRY 1024 // 页表项数量

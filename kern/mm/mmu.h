@@ -205,6 +205,9 @@ struct task_state
 #define PTE_ADDR(pte) ((uintptr_t)(pte) & ~0xFFF)
 #define PDE_ADDR(pde) PTE_ADDR(pde)
 
+// construct linear address from indexes and offset
+#define PGADDR(d, t, o) ((uintptr_t)((d) << PDX_SHIFT | (t) << PTX_SHIFT | (o)))
+
 // 页目录表项结构
 //
 // +------------20-----------+--3--+-1-+-1--+-1-+-1-+--1--+--1--+--1--+--1--+-1-+
@@ -258,6 +261,8 @@ struct task_state
 #define PTE_D 0x040   // Dirty
 #define PTE_MBZ 0x180 // Bits must be zero
 #define PTE_AVL 0xE00 // Available for software use
+
+#define PTE_USER (PTE_U | PTE_W | PTE_P)
 
 typedef uintptr_t pte_t;
 typedef uintptr_t pde_t;

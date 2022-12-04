@@ -9,6 +9,9 @@
 #include "kern/driver/console.h"
 #include "kern/mm/vmm.h"
 #include "kern/debug/assert.h"
+#include "kern/process/proc.h"
+#include "kern/syscall/syscall.h"
+#include "libs/error.h"
 
 #define TICK_NUM 100
 
@@ -71,12 +74,6 @@ trapname(int trapno)
         return "Hardware Interrupt";
     }
     return "(unknown trap)";
-}
-
-/* trap_in_kernel - test if trap happened in kernel */
-bool trap_in_kernel(struct trap_frame *tf)
-{
-    return (tf->tf_cs == (uint16_t)KERNEL_CS);
 }
 
 static const char *IA32flags[] = {
@@ -162,15 +159,36 @@ static inline void print_pgfault(struct trap_frame *tf)
             (tf->tf_err & 1) ? "protection fault" : "no page found");
 }
 
+/* trap_in_kernel - test if trap happened in kernel */
+bool trap_in_kernel(struct trap_frame *tf)
+{
+    return (tf->tf_cs == (uint16_t)KERNEL_CS);
+}
+
 static int pgfault_handler(struct trap_frame *tf)
 {
     extern struct mm_struct *check_mm_struct;
-    print_pgfault(tf);
+    if (check_mm_struct != NULL)
+    { // used for test check_swap
+        print_pgfault(tf);
+    }
+    struct mm_struct *mm;
     if (check_mm_struct != NULL)
     {
-        return do_pgfault(check_mm_struct, tf->tf_err, rcr2());
+        assert(current == idleproc);
+        mm = check_mm_struct;
     }
-    panic("unhandled page fault.\n");
+    else
+    {
+        if (current == NULL)
+        {
+            print_trapframe(tf);
+            print_pgfault(tf);
+            panic("unhandled page fault.\n");
+        }
+        mm = current->mm;
+    }
+    return do_pgfault(mm, tf->tf_err, rcr2());
 }
 
 /* temporary trapframe or pointer to trapframe */
@@ -188,8 +206,24 @@ static void trap_dispatch(struct trap_frame *tf)
         if ((ret = pgfault_handler(tf)) != 0)
         {
             print_trapframe(tf);
-            panic("handle pgfault failed. %e\n", ret);
+            if (current == NULL)
+            {
+                panic("handle pgfault failed. ret=%d\n", ret);
+            }
+            else
+            {
+                if (trap_in_kernel(tf))
+                {
+                    panic("handle pgfault failed in kernel mode. ret=%d\n", ret);
+                }
+                cprintf("killed by kernel.\n");
+                panic("handle user mode pgfault failed. ret=%d\n", ret);
+                do_exit(-E_KILLED);
+            }
         }
+        break;
+    case T_SYSCALL:
+        syscall();
         break;
     case IRQ_OFFSET + IRQ_TIMER:
         /* LAB1 YOUR CODE : STEP 3 */
@@ -198,10 +232,15 @@ static void trap_dispatch(struct trap_frame *tf)
          * (2) Every TICK_NUM cycle, you can print some info using a funciton, such as print_ticks().
          * (3) Too Simple? Yes, I think so!
          */
+        /* LAB5 YOUR CODE */
+        /* you should upate you lab1 code (just add ONE or TWO lines of code):
+         *    Every TICK_NUM cycle, you should set current process's current->need_resched = 1
+         */
         ticks++;
         if (ticks % TICK_NUM == 0)
         {
-            print_ticks();
+            assert(current != NULL);
+            current->need_resched = 1;
         }
         break;
     case IRQ_OFFSET + IRQ_COM1:

@@ -79,11 +79,16 @@ size_t n_free_pages(void);                         // 获取内存管理器中�
 
 #define alloc_page() alloc_pages(1)
 #define free_page(page) free_pages(page, 1)
+int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share);
 
 struct page_desc *pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm);
+void unmap_range(pde_t *pgdir, uintptr_t start, uintptr_t end);
+void exit_range(pde_t *pgdir, uintptr_t start, uintptr_t end);
 
 void pmm_init(void); // 初始化物理内存管理
 
 void load_esp0(uintptr_t esp0);
+
+void print_pgdir(void);
 
 #endif /* !__KERN_MM_PMM_H__ */

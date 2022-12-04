@@ -29,16 +29,17 @@ boot:FORCE | $(BIN_DIR)
 	@$(BUILD_DIR)/sign/lib/sign $(BUILD_DIR)/boot/lib/boot $(BIN_DIR)/boot
 
 # kernel
-KERNEL_MODULES := init trap schedule process schedule mm fs debug driver
+KERNEL_MODULES := init trap syscall schedule process schedule mm fs debug driver
 TOOL_LIB := $(BUILD_DIR)/libs/lib/liblibs.a
 KERNEL_LIBS := $(foreach n, $(KERNEL_MODULES), $(BUILD_DIR)/$(n)/lib/lib$(n).a)
 
 .PHONY:kernel
 kernel:FORCE | $(BIN_DIR)
 	@make -s -f $(TOP_DIR)/libs/makefile MODULE=libs
+	@make -s -f $(TOP_DIR)/user/libs/makefile MODULE=user_exit
 	@for n in $(KERNEL_MODULES); do make -s -f $(TOP_DIR)/kern/$$n/makefile MODULE=$$n || exit "$$?"; done
 	@echo -e "\e[32m""Linking executable $(BIN_DIR)/kernel""\e[0m"
-	@$(LD) $(LDFLAGS) -T $(TOP_DIR)/scripts/kernel.ld -o $(BIN_DIR)/kernel $(KERNEL_LIBS) $(TOOL_LIB)
+	@$(LD) $(LDFLAGS) -T $(TOP_DIR)/scripts/kernel.ld -o $(BIN_DIR)/kernel $(KERNEL_LIBS) $(TOOL_LIB) -b binary $(BUILD_DIR)/user_exit/lib/user_exit
 
 # myos
 .PHONY:myos

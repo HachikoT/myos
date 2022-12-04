@@ -418,10 +418,20 @@ struct page_desc *pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm)
         }
         if (swap_init_ok)
         {
-            swap_map_swappable(check_mm_struct, la, page, 0);
-            page->pra_vaddr = la;
-            assert(page->ref == 1);
-            // cprintf("get No. %d  page: pra_vaddr %x, pra_link.prev %x, pra_link_next %x in pgdir_alloc_page\n", (page-pages), page->pra_vaddr,page->pra_page_link.prev, page->pra_page_link.next);
+            if (check_mm_struct != NULL)
+            {
+                swap_map_swappable(check_mm_struct, la, page, 0);
+                page->pra_vaddr = la;
+                assert(page->ref == 1);
+                // cprintf("get No. %d  page: pra_vaddr %x, pra_link.prev %x, pra_link_next %x in pgdir_alloc_page\n", (page-pages), page->pra_vaddr,page->pra_page_link.prev, page->pra_page_link.next);
+            }
+            else
+            { // now current is existed, should fix it in the future
+              // swap_map_swappable(current->mm, la, page, 0);
+              // page->pra_vaddr=la;
+              // assert(page_ref(page) == 1);
+              // panic("pgdir_alloc_page: no pages. now current is existed, should fix it in the future\n");
+            }
         }
     }
 
@@ -436,4 +446,194 @@ struct page_desc *pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm)
 void load_esp0(uintptr_t esp0)
 {
     ts.ts_esp0 = esp0;
+}
+
+void unmap_range(pde_t *pgdir, uintptr_t start, uintptr_t end)
+{
+    assert(start % PG_SIZE == 0 && end % PG_SIZE == 0);
+    assert(USER_ACCESS(start, end));
+
+    do
+    {
+        pte_t *ptep = get_pte(pgdir, start, 0);
+        if (ptep == NULL)
+        {
+            start = ROUND_DOWN(start + PT_SIZE, PT_SIZE);
+            continue;
+        }
+        if (*ptep != 0)
+        {
+            page_remove_pte(pgdir, start, ptep);
+        }
+        start += PG_SIZE;
+    } while (start != 0 && start < end);
+}
+
+void exit_range(pde_t *pgdir, uintptr_t start, uintptr_t end)
+{
+    assert(start % PG_SIZE == 0 && end % PG_SIZE == 0);
+    assert(USER_ACCESS(start, end));
+
+    start = ROUND_DOWN(start, PT_SIZE);
+    do
+    {
+        int pde_idx = PDX(start);
+        if (pgdir[pde_idx] & PTE_P)
+        {
+            free_page(pde2page(pgdir[pde_idx]));
+            pgdir[pde_idx] = 0;
+        }
+        start += PT_SIZE;
+    } while (start != 0 && start < end);
+}
+
+/* copy_range - copy content of memory (start, end) of one process A to another process B
+ * @to:    the addr of process B's Page Directory
+ * @from:  the addr of process A's Page Directory
+ * @share: flags to indicate to dup OR share. We just use dup method, so it didn't be used.
+ *
+ * CALL GRAPH: copy_mm-->dup_mmap-->copy_range
+ */
+int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share)
+{
+    assert(start % PG_SIZE == 0 && end % PG_SIZE == 0);
+    assert(USER_ACCESS(start, end));
+    // copy content by page unit.
+    do
+    {
+        // call get_pte to find process A's pte according to the addr start
+        pte_t *ptep = get_pte(from, start, 0), *nptep;
+        if (ptep == NULL)
+        {
+            start = ROUND_DOWN(start + PT_SIZE, PT_SIZE);
+            continue;
+        }
+        // call get_pte to find process B's pte according to the addr start. If pte is NULL, just alloc a PT
+        if (*ptep & PTE_P)
+        {
+            if ((nptep = get_pte(to, start, 1)) == NULL)
+            {
+                return -E_NO_MEM;
+            }
+            uint32_t perm = (*ptep & PTE_USER);
+            // get page from ptep
+            struct page_desc *page = pte2page(*ptep);
+            // alloc a page for process B
+            struct page_desc *npage = alloc_page();
+            assert(page != NULL);
+            assert(npage != NULL);
+            int ret = 0;
+            /* LAB5:EXERCISE2 YOUR CODE
+             * replicate content of page to npage, build the map of phy addr of nage with the linear addr start
+             *
+             * Some Useful MACROs and DEFINEs, you can use them in below implementation.
+             * MACROs or Functions:
+             *    page2kva(struct Page *page): return the kernel vritual addr of memory which page managed (SEE pmm.h)
+             *    page_insert: build the map of phy addr of an Page with the linear addr la
+             *    memcpy: typical memory copy function
+             *
+             * (1) find src_kvaddr: the kernel virtual address of page
+             * (2) find dst_kvaddr: the kernel virtual address of npage
+             * (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
+             * (4) build the map of phy addr of  nage with the linear addr start
+             */
+            void *kva_src = page2kva(page);
+            void *kva_dst = page2kva(npage);
+
+            memcpy(kva_dst, kva_src, PG_SIZE);
+
+            ret = page_insert(to, npage, start, perm);
+            assert(ret == 0);
+        }
+        start += PG_SIZE;
+    } while (start != 0 && start < end);
+    return 0;
+}
+
+/* *
+ * The page directory entry corresponding to the virtual address range
+ * [VPT, VPT + PTSIZE) points to the page directory itself. Thus, the page
+ * directory is treated as a page table as well as a page directory.
+ *
+ * One result of treating the page directory as a page table is that all PTEs
+ * can be accessed though a "virtual page table" at virtual address VPT. And the
+ * PTE for number n is stored in vpt[n].
+ *
+ * A second consequence is that the contents of the current page directory will
+ * always available at virtual address PGADDR(PDX(VPT), PDX(VPT), 0), to which
+ * vpd is set bellow.
+ * */
+pte_t *const vpt = (pte_t *)VPT;
+pde_t *const vpd = (pde_t *)PGADDR(PDX(VPT), PDX(VPT), 0);
+
+// perm2str - use string 'u,r,w,-' to present the permission
+static const char *
+perm2str(int perm)
+{
+    static char str[4];
+    str[0] = (perm & PTE_U) ? 'u' : '-';
+    str[1] = 'r';
+    str[2] = (perm & PTE_W) ? 'w' : '-';
+    str[3] = '\0';
+    return str;
+}
+
+// get_pgtable_items - In [left, right] range of PDT or PT, find a continuous linear addr space
+//                   - (left_store*X_SIZE~right_store*X_SIZE) for PDT or PT
+//                   - X_SIZE=PTSIZE=4M, if PDT; X_SIZE=PGSIZE=4K, if PT
+//  paramemters:
+//   left:        no use ???
+//   right:       the high side of table's range
+//   start:       the low side of table's range
+//   table:       the beginning addr of table
+//   left_store:  the pointer of the high side of table's next range
+//   right_store: the pointer of the low side of table's next range
+//  return value: 0 - not a invalid item range, perm - a valid item range with perm permission
+static int
+get_pgtable_items(size_t left, size_t right, size_t start, uintptr_t *table, size_t *left_store, size_t *right_store)
+{
+    if (start >= right)
+    {
+        return 0;
+    }
+    while (start < right && !(table[start] & PTE_P))
+    {
+        start++;
+    }
+    if (start < right)
+    {
+        if (left_store != NULL)
+        {
+            *left_store = start;
+        }
+        int perm = (table[start++] & PTE_USER);
+        while (start < right && (table[start] & PTE_USER) == perm)
+        {
+            start++;
+        }
+        if (right_store != NULL)
+        {
+            *right_store = start;
+        }
+        return perm;
+    }
+    return 0;
+}
+
+void print_pgdir(void)
+{
+    cprintf("-------------------- BEGIN --------------------\n");
+    size_t left, right = 0, perm;
+    while ((perm = get_pgtable_items(0, N_PDE_ENTRY, right, vpd, &left, &right)) != 0)
+    {
+        cprintf("PDE(%03x) %08x-%08x %08x %s\n", right - left,
+                left * PT_SIZE, right * PT_SIZE, (right - left) * PT_SIZE, perm2str(perm));
+        size_t l, r = left * N_PTE_ENTRY;
+        while ((perm = get_pgtable_items(left * N_PTE_ENTRY, right * N_PTE_ENTRY, r, vpt, &l, &r)) != 0)
+        {
+            cprintf("  |-- PTE(%05x) %08x-%08x %08x %s\n", r - l,
+                    l * PG_SIZE, r * PG_SIZE, (r - l) * PG_SIZE, perm2str(perm));
+        }
+    }
+    cprintf("--------------------- END ---------------------\n");
 }

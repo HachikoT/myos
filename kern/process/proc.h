@@ -42,24 +42,32 @@ struct context
 #define MAX_PROCESS 4096
 #define MAX_PID (MAX_PROCESS * 2)
 
+#define PF_EXITING 0x00000001 // getting shutdown
+
+#define WT_CHILD (0x00000001 | WT_INTERRUPTED)
+#define WT_INTERRUPTED 0x80000000 // the wait state could be interrupted
+
 extern list_entry_t proc_list;
 
 struct proc_struct
 {
-    enum proc_state state;        // Process state
-    int pid;                      // Process ID
-    int runs;                     // the running times of Proces
-    uintptr_t kstack;             // Process kernel stack
-    volatile bool need_resched;   // bool value: need to be rescheduled to release CPU?
-    struct proc_struct *parent;   // the parent process
-    struct mm_struct *mm;         // Process's memory management field
-    struct context context;       // Switch here to run process
-    struct trap_frame *tf;        // Trap frame for current interrupt
-    uintptr_t cr3;                // CR3 register: the base addr of Page Directroy Table(PDT)
-    uint32_t flags;               // Process flag
-    char name[PROC_NAME_LEN + 1]; // Process name
-    list_entry_t list_link;       // Process link list
-    list_entry_t hash_link;       // Process hash list
+    enum proc_state state;                  // Process state
+    int pid;                                // Process ID
+    int runs;                               // the running times of Proces
+    uintptr_t kstack;                       // Process kernel stack
+    volatile bool need_resched;             // bool value: need to be rescheduled to release CPU?
+    struct proc_struct *parent;             // the parent process
+    struct mm_struct *mm;                   // Process's memory management field
+    struct context context;                 // Switch here to run process
+    struct trap_frame *tf;                  // Trap frame for current interrupt
+    uintptr_t cr3;                          // CR3 register: the base addr of Page Directroy Table(PDT)
+    uint32_t flags;                         // Process flag
+    char name[PROC_NAME_LEN + 1];           // Process name
+    list_entry_t list_link;                 // Process link list
+    list_entry_t hash_link;                 // Process hash list
+    int exit_code;                          // exit code (be sent to parent proc)
+    uint32_t wait_state;                    // waiting state
+    struct proc_struct *cptr, *yptr, *optr; // relations between processes
 };
 
 #define le2proc(le, member) \
