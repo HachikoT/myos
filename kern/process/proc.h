@@ -5,6 +5,8 @@
 #include "libs/list.h"
 #include "kern/trap/trap.h"
 #include "kern/mm/vmm.h"
+#include "libs/skew_heap.h"
+#include "kern/schedule/sched.h"
 
 /* fork flags used in do_fork*/
 #define CLONE_VM 0x00000100     // set if VM shared between processes
@@ -68,6 +70,12 @@ struct proc_struct
     int exit_code;                          // exit code (be sent to parent proc)
     uint32_t wait_state;                    // waiting state
     struct proc_struct *cptr, *yptr, *optr; // relations between processes
+    struct run_queue *rq;                   // running queue contains Process
+    list_entry_t run_link;                  // the entry linked in run queue
+    int time_slice;                         // time slice for occupying the CPU
+    skew_heap_entry_t lab6_run_pool;        // FOR LAB6 ONLY: the entry in the run pool
+    uint32_t lab6_stride;                   // FOR LAB6 ONLY: the current stride of the process
+    uint32_t lab6_priority;                 // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
 };
 
 #define le2proc(le, member) \
@@ -86,5 +94,8 @@ void cpu_idle(void) __attribute__((noreturn));
 struct proc_struct *find_proc(int pid);
 int do_fork(uint32_t clone_flags, uintptr_t stack, struct trap_frame *tf);
 int do_exit(int error_code);
+
+// FOR LAB6, set the process's priority (bigger value will get more CPU time)
+void lab6_set_priority(uint32_t priority);
 
 #endif /* !__KERN_PROCESS_PROC_H__ */

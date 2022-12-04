@@ -9,6 +9,7 @@
 #include "kern/mm/vmm.h"
 #include "kern/driver/ide.h"
 #include "kern/process/proc.h"
+#include "kern/schedule/sched.h"
 
 // 内核入口
 void kern_init(void)
@@ -27,8 +28,9 @@ void kern_init(void)
     pic_init(); // 初始化中断控制器
     idt_init(); // init interrupt descriptor table
 
-    vmm_init();  // init virtual memory management
-    proc_init(); // init process table
+    vmm_init();   // init virtual memory management
+    sched_init(); // init scheduler
+    proc_init();  // init process table
 
     ide_init();  // init ide devices
     swap_init(); // init swap

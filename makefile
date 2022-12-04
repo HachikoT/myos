@@ -39,7 +39,7 @@ kernel:FORCE | $(BIN_DIR)
 	@make -s -f $(TOP_DIR)/user/libs/makefile MODULE=user_exit
 	@for n in $(KERNEL_MODULES); do make -s -f $(TOP_DIR)/kern/$$n/makefile MODULE=$$n || exit "$$?"; done
 	@echo -e "\e[32m""Linking executable $(BIN_DIR)/kernel""\e[0m"
-	@$(LD) $(LDFLAGS) -T $(TOP_DIR)/scripts/kernel.ld -o $(BIN_DIR)/kernel $(KERNEL_LIBS) $(TOOL_LIB) -b binary $(BUILD_DIR)/user_exit/lib/user_exit
+	@$(LD) $(LDFLAGS) -T $(TOP_DIR)/scripts/kernel.ld -o $(BIN_DIR)/kernel $(KERNEL_LIBS) $(TOOL_LIB)
 
 # myos
 .PHONY:myos

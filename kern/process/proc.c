@@ -152,6 +152,14 @@ alloc_proc(void)
         proc->cr3 = g_boot_cr3;
         proc->flags = 0;
         memset(proc->name, 0, PROC_NAME_LEN);
+        proc->wait_state = 0;
+        proc->cptr = proc->optr = proc->yptr = NULL;
+        proc->rq = NULL;
+        list_init(&(proc->run_link));
+        proc->time_slice = 0;
+        proc->lab6_run_pool.left = proc->lab6_run_pool.right = proc->lab6_run_pool.parent = NULL;
+        proc->lab6_stride = 0;
+        proc->lab6_priority = 0;
     }
     return proc;
 }
@@ -989,4 +997,13 @@ void cpu_idle(void)
             schedule();
         }
     }
+}
+
+// FOR LAB6, set the process's priority (bigger value will get more CPU time)
+void lab6_set_priority(uint32_t priority)
+{
+    if (priority == 0)
+        current->lab6_priority = 1;
+    else
+        current->lab6_priority = priority;
 }
