@@ -5,7 +5,7 @@ SECTIONS {
     . = 0x7C00;
 
     .startup : {
-        *boot_asm.o(.text)
+        *boot_entry.o(.text)
     }
 
     .text : { *(.text) }

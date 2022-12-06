@@ -46,4 +46,3 @@ $(OBJ_DIR):
 # 自动生成.dep目录
 $(DEP_DIR):
 	@mkdir -p $@
-

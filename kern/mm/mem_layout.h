@@ -116,7 +116,7 @@
 
 struct e820map
 {
-    int n_map; // 探测到的内存块数量
+    uint32_t n_map; // 探测到的内存块数量
     struct
     {
         uint64_t addr; // 内存基址

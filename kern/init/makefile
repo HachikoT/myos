@@ -19,7 +19,7 @@ all:$(TARGET)
 
 # 生成构建目标
 $(TARGET):$(OBJS) | $(LIB_DIR)
-	@echo -e "\e[36m""Archiving library $(TARGET)""\e[0m"
+	@echo -e "\e[36m""Archiving static library $(TARGET)""\e[0m"
 	@$(AR) $(ARFLAGS) $@ $^
 
 # 生成中间目标文件
@@ -45,4 +45,3 @@ $(OBJ_DIR):
 # 自动生成.dep目录
 $(DEP_DIR):
 	@mkdir -p $@
-

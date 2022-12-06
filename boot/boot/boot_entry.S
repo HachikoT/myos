@@ -6,13 +6,13 @@
 .set SMAP,                  0x534d4150              // 4个ASCII字符“SMAP”
 
 // BIOS会加载第一个扇区（512Byte）的数据作为bootloader，将其加载到0x7c00处，并将CS:IP设置为0:0x7c00，跳转到该处执行
-// 需要在链接的时候确保start的地址为0x7c00，使其作为bootloader的入口函数
-.globl start
-start:
+// 需要在链接的时候确保boot_entry的地址为0x7c00，使其作为bootloader的入口函数
+.globl boot_entry
+boot_entry:
 // 生成16位汇编代码，实模式运行
 .code16
 
-    cli                                             // 禁止中断
+    cli                                             // 禁止外部中断
 
     // 设置好重要的段寄存器
     xorw %ax, %ax                                   // 0
@@ -42,10 +42,22 @@ enable_a20.2:
     movb $0xdf, %al                                 // 0xdf -> port 0x60
     outb %al, $0x60                                 // 0xdf = 11011111, means set P2's A20 bit(the 1 bit) to 1
 
-    // 探测物理内存布局，使用e820方式
+    // 探测物理内存布局，使用e820方式，结果保存在地址为0x8000的e820map对象中
+    //
+    // struct e820map
+    // {
+    //     uint32_t n_map; // 探测到的内存块数量
+    //     struct
+    //     {
+    //         uint64_t addr; // 内存基址
+    //         uint64_t size; // 内存大小
+    //         uint32_t type; // 内存类型
+    //     } __attribute__((packed)) map[E820_MAX];
+    // };
+    //
 probe_memory:
-    movl $0, 0x8000         // 操作内存地址为0x8000的e820map对象，第一个字段设置为0，表示当前已探测到的内存块数量
-    xorl %ebx, %ebx         // ebx设置为0，表示当前要探测的内存块序号，探测完成之后会自动加1
+    movl $0, 0x8000         // 操作内存地址为0x8000的e820map对象，第一个字段（n_map）初始为0，表示当前已探测到的内存块数量
+    xorl %ebx, %ebx         // ebx初始为0，表示当前要探测的内存块序号，每次探测之后会自动加1
     movw $0x8004, %di       // es:di指向的地址用来存放探测到的内存块属性
 start_probe:
     movl $0xE820, %eax      // 设置eax，表示以e820方式进行探测
@@ -87,15 +99,15 @@ prot_cseg:
     movw %ax, %gs                                   // GS
     movw %ax, %ss                                   // Stack Segment
 
-    // 设置好基址和栈顶指针寄存器，范围0-start（0x7c00）。然后调用bootmain
+    // 设置好基址和栈顶指针寄存器，范围0-boot_entry（0x7c00）。然后调用boot_main
     // 栈是从高地址向低地址增长的，%ebp记录栈底，用于根据偏移地址计算出栈对象的地址
-    // 按理说%ebp是要大于%esp的，但是由于现在处于初始状态，设置为0也没什么问题等调用了bootmain之后就正常了
+    // 按理说%ebp是要大于%esp的，但是由于现在处于初始状态，设置为0也没什么问题等调用了boot_main之后就正常了
     movl $0x0, %ebp
-    movl $start, %esp
+    movl $boot_entry, %esp
     call boot_main
 
 spin:
-    // 如果bootmain退出后（不应该发生），进入死循环
+    // 如果boot_main退出后（不应该发生），进入死循环
     jmp spin
 
 // 全局描述符表

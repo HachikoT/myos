@@ -44,6 +44,7 @@ __gdt:
     SEG_NULL_ASM                                            // 第0项，null段描述符
     SEG_DESC_ASM(STA_X | STA_R, -KERN_BASE, 0xFFFFFFFF)     // 第1项（可执行/可读代码段，基址为-KERN_BASE，范围4GB）
     SEG_DESC_ASM(STA_W, -KERN_BASE, 0xFFFFFFFF)             // 第2项（可读写数据段，基址为-KERN_BASE，范围4GB）
+
 __gdt_desc:
     .word 0x17                                              // sizeof(__gdt) - 1
     .long REALLOC(__gdt)                                    // __gdt的地址

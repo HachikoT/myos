@@ -20,13 +20,19 @@ ARFLAGS := -rc
 export AR ARFLAGS
 
 # bootloader
+BOOT_TARGET := $(BIN_DIR)/boot
 BOOT_MODULES := sign boot
+BOOT_LIBS := $(foreach n, $(BOOT_MODULES), $(BUILD_DIR)/$(n)/lib/$(n))
 
 .PHONY:boot
-boot:FORCE | $(BIN_DIR)
-	@for n in $(BOOT_MODULES); do make -s -f $(TOP_DIR)/boot/$$n/makefile MODULE=$$n || exit "$$?"; done
-	@echo -e "\e[32m""Signing executable $(BIN_DIR)/boot""\e[0m"
-	@$(BUILD_DIR)/sign/lib/sign $(BUILD_DIR)/boot/lib/boot $(BIN_DIR)/boot
+boot:$(BOOT_TARGET)
+
+$(BOOT_TARGET):$(BOOT_LIBS) | $(BIN_DIR)
+	@echo -e "\e[32m""Signing executable $@""\e[0m"
+	@$(BUILD_DIR)/sign/lib/sign $(BUILD_DIR)/boot/lib/boot $@
+
+$(BOOT_LIBS)::
+	@make -s -f $(TOP_DIR)/boot/$(basename $(notdir $@))/makefile MODULE=$(basename $(notdir $@))
 
 # kernel
 KERNEL_MODULES := init trap syscall schedule process schedule mm fs debug driver
