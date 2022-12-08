@@ -19,10 +19,24 @@ AR := ar
 ARFLAGS := -rc
 export AR ARFLAGS
 
-# bootloader
+# myos
+MYOS_TARGET := $(BIN_DIR)/myos.img
+MYOS_MODULES := boot kernel
+
+.PHONY:myos
+myos:$(MYOS_TARGET)
+
+$(MYOS_TARGET):$(MYOS_MODULES) | $(BIN_DIR)
+	@echo -e "\e[32m""Generating image $@""\e[0m"
+	@dd if=/dev/zero of=/home/rc/work/myos/build/bin/myos.img count=10000
+	@dd if=$(BIN_DIR)/boot of=$@ conv=notrunc
+	@dd if=$(BIN_DIR)/kernel of=$@ seek=1 conv=notrunc
+
+# boot
 BOOT_TARGET := $(BIN_DIR)/boot
 BOOT_MODULES := sign boot
 BOOT_LIBS := $(foreach n, $(BOOT_MODULES), $(BUILD_DIR)/$(n)/lib/$(n))
+BOOT_MODULE = $(basename $(notdir $@))
 
 .PHONY:boot
 boot:$(BOOT_TARGET)
@@ -32,32 +46,23 @@ $(BOOT_TARGET):$(BOOT_LIBS) | $(BIN_DIR)
 	@$(BUILD_DIR)/sign/lib/sign $(BUILD_DIR)/boot/lib/boot $@
 
 $(BOOT_LIBS)::
-	@make -s -f $(TOP_DIR)/boot/$(basename $(notdir $@))/makefile MODULE=$(basename $(notdir $@))
+	@make -s -f $(TOP_DIR)/boot/$(BOOT_MODULE)/makefile MODULE=$(BOOT_MODULE)
 
 # kernel
-KERNEL_MODULES := init trap syscall schedule process schedule mm fs debug driver
-TOOL_LIB := $(BUILD_DIR)/libs/lib/liblibs.a
+KERNEL_TARGET := $(BIN_DIR)/kernel
+KERNEL_MODULES := init trap debug driver libs
 KERNEL_LIBS := $(foreach n, $(KERNEL_MODULES), $(BUILD_DIR)/$(n)/lib/lib$(n).a)
+KERNEL_MODULE = $(patsubst lib%.a,%, $(notdir $@))
 
 .PHONY:kernel
-kernel:FORCE | $(BIN_DIR)
-	@make -s -f $(TOP_DIR)/libs/makefile MODULE=libs
-	@make -s -f $(TOP_DIR)/user/libs/makefile MODULE=user_exit
-	@for n in $(KERNEL_MODULES); do make -s -f $(TOP_DIR)/kern/$$n/makefile MODULE=$$n || exit "$$?"; done
-	@echo -e "\e[32m""Linking executable $(BIN_DIR)/kernel""\e[0m"
-	@$(LD) $(LDFLAGS) -T $(TOP_DIR)/scripts/kernel.ld -o $(BIN_DIR)/kernel $(KERNEL_LIBS) $(TOOL_LIB)
+kernel:$(KERNEL_TARGET)
 
-# myos
-.PHONY:myos
-myos:boot kernel | $(BIN_DIR)
-	@echo -e "\e[32m""Generating image $(BIN_DIR)/myos.img""\e[0m"
-	@dd if=/dev/zero of=/home/rc/work/myos/build/bin/myos.img count=10000
-	@dd if=$(BIN_DIR)/boot of=$(BIN_DIR)/myos.img conv=notrunc
-	@dd if=$(BIN_DIR)/kernel of=$(BIN_DIR)/myos.img seek=1 conv=notrunc
+$(KERNEL_TARGET):$(KERNEL_LIBS) | $(BIN_DIR)
+	@echo -e "\e[32m""Linking executable $@""\e[0m"
+	@$(LD) $(LDFLAGS) -T $(TOP_DIR)/scripts/kernel.ld -o $@ $(KERNEL_LIBS)
 
-# 始终执行
-.PHONY:FORCE
-FORCE:
+$(KERNEL_LIBS)::
+	@make -s -f $(TOP_DIR)/$(if $(filter-out libs,$(KERNEL_MODULE)),kern/)$(KERNEL_MODULE)/makefile MODULE=$(KERNEL_MODULE)
 
 # 自动生成bin目录
 $(BIN_DIR):

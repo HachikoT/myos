@@ -2,7 +2,6 @@
 #include "libs/x86.h"
 #include "kern/driver/stdio.h"
 #include "kern/driver/picirq.h"
-#include "kern/trap/trap.h"
 
 /* *
  * Support for time-related hardware gadgets - the 8253 timer,
@@ -14,7 +13,6 @@
  * Frequency of all three count-down timers; (TIMER_FREQ/freq)
  * is the appropriate count to generate a frequency of freq Hz.
  * */
-
 #define TIMER_FREQ 1193182
 #define TIMER_DIV(x) ((TIMER_FREQ + (x) / 2) / (x))
 

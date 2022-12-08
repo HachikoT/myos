@@ -1,44 +1,40 @@
 #include "kern/mm/mem_layout.h"
 
-# vectors.S sends all traps here.
+// 每一个中断向量在保存好中断现场和中断向量号后跳转到这里，继续构建trap_frame
 .text
 .globl __alltraps
 __alltraps:
-    # push registers to build a trap frame
-    # therefore make the stack look like a struct trapframe
+    // 继续压入寄存器数据构建好trap_frame
     pushl %ds
     pushl %es
     pushl %fs
     pushl %gs
     pushal
 
-    # load GD_KDATA into %ds and %es to set up data segments for kernel
+    // 设置好ds和es
     movl $GD_KDATA, %eax
     movw %ax, %ds
     movw %ax, %es
 
-    # push %esp to pass a pointer to the trapframe as an argument to trap()
+    // %esp指向trap_frame的地址，压入栈作为trap函数的参数
     pushl %esp
 
-    # call trap(tf), where tf=%esp
+    // 可以调用trap(struct trap_frame* tf)了
     call trap
 
-    # pop the pushed stack pointer
+    // 参数出栈
     popl %esp
 
-    # return falls through to trapret...
+// 退出中断，逆序出栈数据
 .globl __trapret
 __trapret:
-    # restore registers from stack
     popal
-
-    # restore %ds, %es, %fs and %gs
     popl %gs
     popl %fs
     popl %es
     popl %ds
 
-    # get rid of the trap number and error code
+    // 出栈中断号
     addl $0x8, %esp
     iret
 

@@ -1,13 +1,13 @@
 #include "kern/driver/intr.h"
 #include "libs/x86.h"
 
-/* intr_enable - enable irq interrupt */
+// 允许外部中断
 void intr_enable(void)
 {
     sti();
 }
 
-/* intr_disable - disable irq interrupt */
+// 禁止外部中断
 void intr_disable(void)
 {
     cli();

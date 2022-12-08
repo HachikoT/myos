@@ -41,4 +41,4 @@
     .byte(((base) >> 16) & 0xff), (0x90 | (type)),  \
         (0xC0 | (((lim) >> 28) & 0xf)), (((base) >> 24) & 0xff)
 
-#endif /* !__LIBS_DESCRIPTOR_H__ */
+#endif // __LIBS_DESCRIPTOR_H__

@@ -1,8 +1,8 @@
+#include "kern/driver/console.h"
 #include "libs/defs.h"
 #include "libs/x86.h"
 #include "libs/string.h"
 #include "kern/driver/picirq.h"
-#include "kern/trap/trap.h"
 #include "kern/driver/kbdreg.h"
 #include "kern/driver/stdio.h"
 #include "kern/mm/mem_layout.h"
@@ -49,36 +49,96 @@ static void delay(void)
     inb(0x84);
 }
 
-static uint16_t *crt_buf;
-static uint16_t crt_pos;
-static uint16_t addr_6845;
+static uint16_t g_cursor_pos; // 当前游标的位置，等于行数*80+列数
+static uint16_t *g_crt_buf;   // 显存数组
+static uint16_t g_addr_6845;  // 控制端口
 
-/* TEXT-mode CGA/VGA display output */
+// 初始化文本模式显示适配器，可以显示25行80列的ASCII字符，修改显存就可以修改显示的内容
 static void cga_init(void)
 {
+    // 判断彩色文本模式是否可用，否则使用黑白的
+    // CGA_BUF 0xB8000，彩色文本模式显存
+    // MONO_BUF 0xB8000，黑白文本模式显存
     volatile uint16_t *cp = (uint16_t *)CGA_BUF;
     uint16_t was = *cp;
     *cp = (uint16_t)0xA55A;
     if (*cp != 0xA55A)
     {
         cp = (uint16_t *)MONO_BUF;
-        addr_6845 = MONO_BASE;
+        g_addr_6845 = MONO_BASE;
     }
     else
     {
         *cp = was;
-        addr_6845 = CGA_BASE;
+        g_addr_6845 = CGA_BASE;
+    }
+    g_crt_buf = (uint16_t *)cp;
+
+    // 获取当前的游标位置
+    uint16_t pos;
+    outb(g_addr_6845, 14);
+    pos = inb(g_addr_6845 + 1) << 8;
+    outb(g_addr_6845, 15);
+    pos |= inb(g_addr_6845 + 1);
+
+    g_cursor_pos = pos;
+}
+
+// 向显示器写一个字符，显存中每两个字节表示一个字符，结构如下
+//
+// +-1-+-1-+-1-+-1-+-1-+-1-+-1-+-1-+-----8------+
+// | K | R | G | B | I | R | G | B | ASCII编码  |
+// +---+---+---+---+---+---+---+---+------------+
+//
+// K：是否闪烁
+// 第一个RGB：背景色
+// I：前景色深浅
+// 第二个RGB：前景色
+//
+static void cga_putc(int c)
+{
+    // 没有设置颜色的默认白字黑底
+    if (!(c & ~0xFF))
+    {
+        c |= 0x0700;
     }
 
-    // Extract cursor location
-    uint32_t pos;
-    outb(addr_6845, 14);
-    pos = inb(addr_6845 + 1) << 8;
-    outb(addr_6845, 15);
-    pos |= inb(addr_6845 + 1);
+    switch (c & 0xff)
+    {
+    case '\b':
+        if (g_cursor_pos > 0)
+        {
+            g_cursor_pos--;
+            g_crt_buf[g_cursor_pos] = (c & ~0xff) | ' ';
+        }
+        break;
+    case '\n':
+        g_cursor_pos += CRT_COLS;
+    case '\r':
+        g_cursor_pos -= (g_cursor_pos % CRT_COLS);
+        break;
+    default:
+        g_crt_buf[g_cursor_pos++] = c;
+        break;
+    }
 
-    crt_buf = (uint16_t *)cp;
-    crt_pos = pos;
+    // 当超过一页，向后滚动一行
+    if (g_cursor_pos >= CRT_SIZE)
+    {
+        memmove(g_crt_buf, g_crt_buf + CRT_COLS, (CRT_SIZE - CRT_COLS) * sizeof(uint16_t));
+        for (int i = CRT_SIZE - CRT_COLS; i < CRT_SIZE; i++)
+        {
+            // 最后一行内容初始化为空格
+            g_crt_buf[i] = 0x0700 | ' ';
+        }
+        g_cursor_pos -= CRT_COLS;
+    }
+
+    // 移动游标到新的位置
+    outb(g_addr_6845, 14);
+    outb(g_addr_6845 + 1, g_cursor_pos >> 8);
+    outb(g_addr_6845, 15);
+    outb(g_addr_6845 + 1, g_cursor_pos);
 }
 
 static bool serial_exists = 0;
@@ -140,53 +200,6 @@ static void lpt_putc(int c)
     }
 }
 
-/* cga_putc - print character to console */
-static void cga_putc(int c)
-{
-    // set black on white
-    if (!(c & ~0xFF))
-    {
-        c |= 0x0700;
-    }
-
-    switch (c & 0xff)
-    {
-    case '\b':
-        if (crt_pos > 0)
-        {
-            crt_pos--;
-            crt_buf[crt_pos] = (c & ~0xff) | ' ';
-        }
-        break;
-    case '\n':
-        crt_pos += CRT_COLS;
-    case '\r':
-        crt_pos -= (crt_pos % CRT_COLS);
-        break;
-    default:
-        crt_buf[crt_pos++] = c; // write the character
-        break;
-    }
-
-    // What is the purpose of this?
-    if (crt_pos >= CRT_SIZE)
-    {
-        int i;
-        memmove(crt_buf, crt_buf + CRT_COLS, (CRT_SIZE - CRT_COLS) * sizeof(uint16_t));
-        for (i = CRT_SIZE - CRT_COLS; i < CRT_SIZE; i++)
-        {
-            crt_buf[i] = 0x0700 | ' ';
-        }
-        crt_pos -= CRT_COLS;
-    }
-
-    // move that little blinky thing
-    outb(addr_6845, 14);
-    outb(addr_6845 + 1, crt_pos >> 8);
-    outb(addr_6845, 15);
-    outb(addr_6845 + 1, crt_pos);
-}
-
 static void
 serial_putc_sub(int c)
 {
@@ -214,12 +227,7 @@ serial_putc(int c)
     }
 }
 
-/* *
- * Here we manage the console input buffer, where we stash characters
- * received from the keyboard or serial port whenever the corresponding
- * interrupt occurs.
- * */
-
+// 控制台输入缓存区
 #define CONSBUFSIZE 512
 
 static struct
@@ -289,17 +297,17 @@ void serial_intr(void)
 #define E0ESC (1 << 6)
 
 static uint8_t shiftcode[256] = {
-    [0x1D] CTL,
-    [0x2A] SHIFT,
-    [0x36] SHIFT,
-    [0x38] ALT,
-    [0x9D] CTL,
-    [0xB8] ALT};
+    [0x1D] = CTL,
+    [0x2A] = SHIFT,
+    [0x36] = SHIFT,
+    [0x38] = ALT,
+    [0x9D] = CTL,
+    [0xB8] = ALT};
 
 static uint8_t togglecode[256] = {
-    [0x3A] CAPSLOCK,
-    [0x45] NUMLOCK,
-    [0x46] SCROLLLOCK};
+    [0x3A] = CAPSLOCK,
+    [0x45] = NUMLOCK,
+    [0x46] = SCROLLLOCK};
 
 static uint8_t normalmap[256] = {
     NO, 0x1B, '1', '2', '3', '4', '5', '6', // 0x00
@@ -313,12 +321,12 @@ static uint8_t normalmap[256] = {
     NO, NO, NO, NO, NO, NO, NO, '7', // 0x40
     '8', '9', '-', '4', '5', '6', '+', '1',
     '2', '3', '0', '.', NO, NO, NO, NO, // 0x50
-    [0xC7] KEY_HOME, [0x9C] '\n' /*KP_Enter*/,
-    [0xB5] '/' /*KP_Div*/, [0xC8] KEY_UP,
-    [0xC9] KEY_PGUP, [0xCB] KEY_LF,
-    [0xCD] KEY_RT, [0xCF] KEY_END,
-    [0xD0] KEY_DN, [0xD1] KEY_PGDN,
-    [0xD2] KEY_INS, [0xD3] KEY_DEL};
+    [0xC7] = KEY_HOME, [0x9C] = '\n' /*KP_Enter*/,
+    [0xB5] = '/' /*KP_Div*/, [0xC8] = KEY_UP,
+    [0xC9] = KEY_PGUP, [0xCB] = KEY_LF,
+    [0xCD] = KEY_RT, [0xCF] = KEY_END,
+    [0xD0] = KEY_DN, [0xD1] = KEY_PGDN,
+    [0xD2] = KEY_INS, [0xD3] = KEY_DEL};
 
 static uint8_t shiftmap[256] = {
     NO, 033, '!', '@', '#', '$', '%', '^', // 0x00
@@ -332,12 +340,12 @@ static uint8_t shiftmap[256] = {
     NO, NO, NO, NO, NO, NO, NO, '7', // 0x40
     '8', '9', '-', '4', '5', '6', '+', '1',
     '2', '3', '0', '.', NO, NO, NO, NO, // 0x50
-    [0xC7] KEY_HOME, [0x9C] '\n' /*KP_Enter*/,
-    [0xB5] '/' /*KP_Div*/, [0xC8] KEY_UP,
-    [0xC9] KEY_PGUP, [0xCB] KEY_LF,
-    [0xCD] KEY_RT, [0xCF] KEY_END,
-    [0xD0] KEY_DN, [0xD1] KEY_PGDN,
-    [0xD2] KEY_INS, [0xD3] KEY_DEL};
+    [0xC7] = KEY_HOME, [0x9C] = '\n' /*KP_Enter*/,
+    [0xB5] = '/' /*KP_Div*/, [0xC8] = KEY_UP,
+    [0xC9] = KEY_PGUP, [0xCB] = KEY_LF,
+    [0xCD] = KEY_RT, [0xCF] = KEY_END,
+    [0xD0] = KEY_DN, [0xD1] = KEY_PGDN,
+    [0xD2] = KEY_INS, [0xD3] = KEY_DEL};
 
 #define C(x) (x - '@')
 
@@ -349,12 +357,12 @@ static uint8_t ctlmap[256] = {
     C('D'), C('F'), C('G'), C('H'), C('J'), C('K'), C('L'), NO,
     NO, NO, NO, C('\\'), C('Z'), C('X'), C('C'), C('V'),
     C('B'), C('N'), C('M'), NO, NO, C('/'), NO, NO,
-    [0x97] KEY_HOME,
-    [0xB5] C('/'), [0xC8] KEY_UP,
-    [0xC9] KEY_PGUP, [0xCB] KEY_LF,
-    [0xCD] KEY_RT, [0xCF] KEY_END,
-    [0xD0] KEY_DN, [0xD1] KEY_PGDN,
-    [0xD2] KEY_INS, [0xD3] KEY_DEL};
+    [0x97] = KEY_HOME,
+    [0xB5] = C('/'), [0xC8] = KEY_UP,
+    [0xC9] = KEY_PGUP, [0xCB] = KEY_LF,
+    [0xCD] = KEY_RT, [0xCF] = KEY_END,
+    [0xD0] = KEY_DN, [0xD1] = KEY_PGDN,
+    [0xD2] = KEY_INS, [0xD3] = KEY_DEL};
 
 static uint8_t *charcode[4] = {
     normalmap,
@@ -374,6 +382,7 @@ static int kbd_proc_data(void)
     uint8_t data;
     static uint32_t shift;
 
+    // 判断是否有缓存输入数据
     if ((inb(KBSTATP) & KBS_DIB) == 0)
     {
         return -1;
@@ -424,7 +433,7 @@ static int kbd_proc_data(void)
 }
 
 /* kbd_intr - try to feed input characters from keyboard */
-static void kbd_intr(void)
+void kbd_intr(void)
 {
     cons_intr(kbd_proc_data);
 }
@@ -439,9 +448,15 @@ static void kbd_init(void)
 // 初始化控制台console
 void cons_init(void)
 {
+    // 初始化文本模式显示适配器
     cga_init();
+
+    // 初始化串口COM1
     serial_init();
+
+    // 初始化键盘
     kbd_init();
+
     if (!serial_exists)
     {
         cprintf("serial port does not exist!!\n");

@@ -295,17 +295,17 @@ long strtol(const char *s, char **endptr, int base)
  *
  * The memset() function returns @s.
  * */
-void *memset(void *s, char c, size_t n)
+void *memset(void *dst, int ch, size_t n)
 {
 #ifdef __HAVE_ARCH_MEMSET
     return __memset(s, c, n);
 #else
-    char *p = s;
+    char *p = dst;
     while (n-- > 0)
     {
-        *p++ = c;
+        *p++ = ch;
     }
-    return s;
+    return dst;
 #endif /* __HAVE_ARCH_MEMSET */
 }
 
@@ -318,8 +318,7 @@ void *memset(void *s, char c, size_t n)
  *
  * The memmove() function returns @dst.
  * */
-void *
-memmove(void *dst, const void *src, size_t n)
+void *memmove(void *dst, const void *src, size_t n)
 {
 #ifdef __HAVE_ARCH_MEMMOVE
     return __memmove(dst, src, n);
@@ -359,8 +358,7 @@ memmove(void *dst, const void *src, size_t n)
  * by both @src and @dst, should be at least @n bytes, and should not overlap
  * (for overlapping memory area, memmove is a safer approach).
  * */
-void *
-memcpy(void *dst, const void *src, size_t n)
+void *memcpy(void *dst, const void *src, size_t n)
 {
 #ifdef __HAVE_ARCH_MEMCPY
     return __memcpy(dst, src, n);

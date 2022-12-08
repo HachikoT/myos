@@ -78,4 +78,4 @@
 #define KBR_RSTDONE 0xAA  // reset complete
 #define KBR_ECHO 0xEE     // echo response
 
-#endif /* !__KERN_DRIVER_KBDREG_H__ */
+#endif // __KERN_DRIVER_KBDREG_H__
