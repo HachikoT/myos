@@ -1,8 +1,6 @@
 #ifndef __KERN_MM_MEM_LAYOUT_H__
 #define __KERN_MM_MEM_LAYOUT_H__
 
-/* This file contains the definitions for memory management in our OS. */
-
 /* global segment number */
 #define SEG_KTEXT 1
 #define SEG_KDATA 2
@@ -34,16 +32,16 @@
  *                            |         Empty Memory (*)        |
  *                            |                                 |
  *                            +---------------------------------+ 0xFB000000
- *                            |   Cur. Page Table (Kern, RW)    | RW/-- PTSIZE
+ *                            |   Cur. Page Table (Kern, RW)    | RW/-- PT_SIZE
  *     VPT -----------------> +---------------------------------+ 0xFAC00000
  *                            |        Invalid Memory (*)       | --/--
- *     KERNTOP -------------> +---------------------------------+ 0xF8000000
+ *     KERN_TOP ------------> +---------------------------------+ 0xF8000000
  *                            |                                 |
- *                            |    Remapped Physical Memory     | RW/-- KMEMSIZE
+ *                            |    Remapped Physical Memory     | RW/-- KMEM_SIZE
  *                            |                                 |
- *     KERNBASE ------------> +---------------------------------+ 0xC0000000
+ *     3G KERN_BASE --------> +---------------------------------+ 0xC0000000
  *                            |        Invalid Memory (*)       | --/--
- *     USERTOP -------------> +---------------------------------+ 0xB0000000
+ *     USER_TOP ------------> +---------------------------------+ 0xB0000000
  *                            |           User stack            |
  *                            +---------------------------------+
  *                            |                                 |
@@ -57,7 +55,7 @@
  *                            |        Invalid Memory (*)       | --/--
  *                            |  - - - - - - - - - - - - - - -  |
  *                            |    User STAB Data (optional)    |
- *     USERBASE, USTAB------> +---------------------------------+ 0x00200000
+ *     USER_BASE, USTAB ----> +---------------------------------+ 0x00200000
  *                            |        Invalid Memory (*)       | --/--
  *     0 -------------------> +---------------------------------+ 0x00000000
  * (*) Note: The kernel ensures that "Invalid Memory" is *never* mapped.
@@ -66,29 +64,23 @@
  *
  * */
 
+// 内核空间（高1GB空间）
 #define KERN_BASE 0xC0000000
-#define KMEM_SIZE 0x38000000 // the maximum amount of physical memory
+#define KMEM_SIZE 0x38000000
 #define KERN_TOP (KERN_BASE + KMEM_SIZE)
-
-/* *
- * Virtual page table. Entry PDX[VPT] in the PD (Page Directory) contains
- * a pointer to the page directory itself, thereby turning the PD into a page
- * table, which maps all the PTEs (Page Table Entry) containing the page mappings
- * for the entire virtual address space into that 4 Meg region starting at VPT.
- * */
 #define VPT 0xFAC00000
 
-#define USERTOP 0xB0000000
-#define USTACKTOP USERTOP
-#define USTACKPAGE 256                    // # of pages in user stack
-#define USTACKSIZE (USTACKPAGE * PG_SIZE) // sizeof user stack
-
-#define USERBASE 0x00200000
-#define UTEXT 0x00800000 // where user programs generally begin
-#define USTAB USERBASE   // the location of the user STABS data structure
+// 用户空间
+#define USER_TOP 0xB0000000
+#define USTACK_TOP USER_TOP
+#define USTACK_PAGE 256
+#define USTACK_SIZE (USTACK_PAGE * PG_SIZE) // 用户进程栈大小1MB
+#define USER_BASE 0x00200000
+#define UTEXT 0x00800000
+#define USTAB USER_BASE
 
 #define USER_ACCESS(start, end) \
-    (USERBASE <= (start) && (start) < (end) && (end) <= USERTOP)
+    (USER_BASE <= (start) && (start) < (end) && (end) <= USER_TOP)
 
 #define KERN_ACCESS(start, end) \
     (KERN_BASE <= (start) && (start) < (end) && (end) <= KERN_TOP)
@@ -170,19 +162,6 @@ typedef struct
 // 将list_entry对象转换为page对象，这里的list_entry必须要为page对象的page_link成员
 #define le2page_pra(le, member) \
     to_struct((le), struct page_desc, member)
-
-/* Control Register flags */
-#define CR0_PE 0x00000001 // Protection Enable
-#define CR0_MP 0x00000002 // Monitor coProcessor
-#define CR0_EM 0x00000004 // Emulation
-#define CR0_TS 0x00000008 // Task Switched
-#define CR0_ET 0x00000010 // Extension Type
-#define CR0_NE 0x00000020 // Numeric Errror
-#define CR0_WP 0x00010000 // Write Protect
-#define CR0_AM 0x00040000 // Alignment Mask
-#define CR0_NW 0x20000000 // Not Writethrough
-#define CR0_CD 0x40000000 // Cache Disable
-#define CR0_PG 0x80000000 // Paging
 
 #define CR4_PCE 0x00000100 // Performance counter enable
 #define CR4_MCE 0x00000040 // Machine Check Enable

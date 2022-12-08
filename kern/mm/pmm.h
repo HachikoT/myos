@@ -9,15 +9,12 @@
 // 物理内存管理框架，主要用来管理物理页
 struct pmm_manager
 {
-    const char *name;                                       // XXX_pmm_manager's name
-    void (*init)(void);                                     // initialize internal description&management data structure
-                                                            // (free block list, number of free block) of XXX_pmm_manager
-    void (*mem_map_init)(struct page_desc *base, size_t n); // setup description&management data structcure according to
-                                                            // the initial free physical memory space
-    struct page_desc *(*alloc_pages)(size_t n);             // allocate >=n pages, depend on the allocation algorithm
-    void (*free_pages)(struct page_desc *base, size_t n);   // free >=n pages with "base" addr of Page descriptor structures(mem_layout.h)
-    size_t (*n_free_pages)(void);                           // return the number of free pages
-    void (*check)(void);                                    // check the correctness of XXX_pmm_manager
+    const char *name;                                       // 物理内存管理器名字
+    void (*init)(void);                                     // 初始化物理内存管理器
+    void (*mem_map_init)(struct page_desc *base, size_t n); // 将n个连续的物理页初始化到物理内存管理器
+    struct page_desc *(*alloc_pages)(size_t n);             // 分配连续的n个物理页
+    void (*free_pages)(struct page_desc *base, size_t n);   // 释放连续的n个物理页
+    size_t (*n_free_pages)(void);                           // 获取当前还有多少个空闲的物理页（不一定连续）
 };
 
 extern struct pmm_manager *g_pmm_mgr;
@@ -73,12 +70,13 @@ pde2page(pde_t pde)
     return pa2page(PDE_ADDR(pde));
 }
 
-struct page_desc *alloc_pages(size_t n);           // 分配连续的n个页描述符
-void free_pages(struct page_desc *base, size_t n); // 释放n个连续的页描述符
-size_t n_free_pages(void);                         // 获取内存管理器中总的空闲页描述符数量
+struct page_desc *alloc_pages(size_t n);           // 分配连续的n个页
+void free_pages(struct page_desc *base, size_t n); // 释放n个连续的页
+size_t n_free_pages(void);                         // 获取内存管理器中总的空闲页数量
 
 #define alloc_page() alloc_pages(1)
 #define free_page(page) free_pages(page, 1)
+
 int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share);
 
 struct page_desc *pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm);
@@ -91,4 +89,4 @@ void load_esp0(uintptr_t esp0);
 
 void print_pgdir(void);
 
-#endif /* !__KERN_MM_PMM_H__ */
+#endif // __KERN_MM_PMM_H__

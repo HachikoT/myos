@@ -98,7 +98,7 @@ void kmonitor(struct trap_frame *tf)
 
     if (tf != NULL)
     {
-        print_trapframe(tf);
+        print_trap_frame(tf);
     }
 
     char *buf;

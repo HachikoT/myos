@@ -22,14 +22,14 @@ void kern_init(void)
 
     cprintf("myos is loading ...\n");
 
-    // pmm_init(); // init physical memory management
+    pmm_init(); // 初始化物理内存管理
 
     pic_init(); // 初始化中断控制器
     idt_init(); // 初始化中断描述符表
 
     pic_enable(IRQ_KBD);
 
-    // clock_init();  // 初始化定时器
+    clock_init();  // 初始化定时器
     intr_enable(); // 允许外部中断
     while (1)
     {

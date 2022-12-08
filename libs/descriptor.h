@@ -41,4 +41,46 @@
     .byte(((base) >> 16) & 0xff), (0x90 | (type)),  \
         (0xC0 | (((lim) >> 28) & 0xf)), (((base) >> 24) & 0xff)
 
+#ifndef __ASSEMBLER__
+
+struct seg_desc
+{
+    unsigned sd_lim_15_0 : 16;  // low bits of segment limit
+    unsigned sd_base_15_0 : 16; // low bits of segment base address
+    unsigned sd_base_23_16 : 8; // middle bits of segment base address
+    unsigned sd_type : 4;       // segment type (see STS_ constants)
+    unsigned sd_s : 1;          // 0 = system, 1 = application
+    unsigned sd_dpl : 2;        // descriptor Privilege Level
+    unsigned sd_p : 1;          // present
+    unsigned sd_lim_19_16 : 4;  // high bits of segment limit
+    unsigned sd_avl : 1;        // unused (available for software use)
+    unsigned sd_rsv1 : 1;       // reserved
+    unsigned sd_db : 1;         // 0 = 16-bit segment, 1 = 32-bit segment
+    unsigned sd_g : 1;          // granularity: limit scaled by 4K when set
+    unsigned sd_base_31_24 : 8; // high bits of segment base address
+};
+
+#define SEG_NULL \
+    (struct seg_desc) { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+
+#define SEG_DESC(type, base, lim, dpl)              \
+    (struct seg_desc)                               \
+    {                                               \
+        ((lim) >> 12) & 0xffff, (base)&0xffff,      \
+            ((base) >> 16) & 0xff, type, 1, dpl, 1, \
+            (unsigned)(lim) >> 28, 0, 0, 1, 1,      \
+            (unsigned)(base) >> 24                  \
+    }
+
+#define SEG_1M_DESC(type, base, lim, dpl)           \
+    (struct seg_desc)                               \
+    {                                               \
+        (lim) & 0xffff, (base)&0xffff,              \
+            ((base) >> 16) & 0xff, type, 1, dpl, 1, \
+            (unsigned)(lim) >> 16, 0, 0, 1, 0,      \
+            (unsigned)(base) >> 24                  \
+    }
+
+#endif // __ASSEMBLER__
+
 #endif // __LIBS_DESCRIPTOR_H__

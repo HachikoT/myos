@@ -11,6 +11,8 @@
 #include "kern/debug/assert.h"
 #include "kern/mm/swap.h"
 #include "kern/mm/kmalloc.h"
+#include "libs/descriptor.h"
+#include "kern/trap/trap.h"
 
 // 当前物理内存管理器
 struct pmm_manager *g_pmm_mgr;
@@ -30,14 +32,14 @@ static void pmm_manager_init(void)
     g_pmm_mgr->init();
 }
 
-// 初始化页描述符和页的映射关系
+// 初始化物理页
 static void page_init(void)
 {
-    // bootloader中探测到的物理内存布局
+    // boot中探测到的物理内存布局
     struct e820map *mem_map = (struct e820map *)(0x8000 + KERN_BASE);
     assert(12345 != mem_map->n_map);
 
-    // 获取最大的物理内存地址（不超过KMEM_SIZE）
+    // 获取最大可用的物理内存地址（不超过KMEM_SIZE）
     uint64_t max_pa = 0;
 
     cprintf("e820map:\n");
@@ -48,7 +50,7 @@ static void page_init(void)
                 mem_map->map[i].size, begin, end - 1, mem_map->map[i].type);
         if (mem_map->map[i].type == E820_MEM)
         {
-            if (max_pa < end && begin < KMEM_SIZE)
+            if (max_pa < end)
             {
                 max_pa = end;
             }
@@ -70,7 +72,7 @@ static void page_init(void)
         SET_PG_FLAG_BIT(g_pages + i, PG_RESERVED);
     }
 
-    // 将可用的内存块按页记录到内存管理器中
+    // 将连续可用的内存页记录到内存管理器中
     uintptr_t free_mem = PADDR(g_pages + g_npage);
     for (int i = 0; i < mem_map->n_map; i++)
     {
@@ -98,7 +100,157 @@ static void page_init(void)
     }
 }
 
-// 分配连续的n个页描述符
+// 为内核页目录表申请一页空间
+static void *boot_alloc_page(void)
+{
+    struct page_desc *p = alloc_page();
+    assert(p != NULL);
+    return page2kva(p);
+}
+
+// 根据线性地址la获取对应的页表项，如果create为true那么页表缺失的话自动创建
+pte_t *get_pte(pde_t *pgdir, uintptr_t la, bool create)
+{
+    pde_t *pdep = &pgdir[PDX(la)];
+    if (!(*pdep & PDE_P))
+    {
+        struct page_desc *page;
+        if (!create || (page = alloc_page()) == NULL)
+        {
+            return NULL;
+        }
+        page->ref = 1;
+        uintptr_t pa = page2pa(page);
+        memset(KADDR(pa), 0, PG_SIZE);
+        *pdep = pa | PTE_U | PTE_W | PTE_P;
+    }
+    return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];
+}
+
+// 获取线性地址la对应物理页
+struct page_desc *get_page(pde_t *pgdir, uintptr_t la, pte_t **ptep_store)
+{
+    pte_t *ptep = get_pte(pgdir, la, 0);
+    if (ptep_store != NULL)
+    {
+        *ptep_store = ptep;
+    }
+    if (ptep != NULL && *ptep & PTE_P)
+    {
+        return pte2page(*ptep);
+    }
+    return NULL;
+}
+
+// 设定页表，将线性地址[la，la + size)映射到物理地址[pa, pa + size)上
+static void boot_map_segment(pde_t *pgdir, uintptr_t la, size_t size, uintptr_t pa, uint32_t perm)
+{
+    size_t n = ROUND_UP(size + PG_OFF(la), PG_SIZE) / PG_SIZE;
+    la = ROUND_DOWN(la, PG_SIZE);
+    pa = ROUND_DOWN(pa, PG_SIZE);
+    for (; n > 0; n--, la += PG_SIZE, pa += PG_SIZE)
+    {
+        pte_t *ptep = get_pte(pgdir, la, 1);
+        *ptep = pa | PTE_P | perm;
+    }
+}
+
+// 开启页机制
+static void enable_paging(void)
+{
+    // cr3寄存器保存页目录表的物理地址
+    lcr3(g_boot_cr3);
+
+    // cr0寄存器，控制了分页机制的开启
+    uint32_t cr0 = rcr0();
+    cr0 |= CR0_PE | CR0_PG | CR0_AM | CR0_WP | CR0_NE | CR0_TS | CR0_EM | CR0_MP;
+    cr0 &= ~(CR0_TS | CR0_EM);
+    lcr0(cr0);
+}
+
+// 全局描述符表
+static struct seg_desc g_gdt[] = {
+    SEG_NULL,
+    [SEG_KTEXT] = SEG_DESC(STA_X | STA_R, 0x0, 0xFFFFFFFF, DPL_KERNEL),
+    [SEG_KDATA] = SEG_DESC(STA_W, 0x0, 0xFFFFFFFF, DPL_KERNEL),
+    [SEG_UTEXT] = SEG_DESC(STA_X | STA_R, 0x0, 0xFFFFFFFF, DPL_USER),
+    [SEG_UDATA] = SEG_DESC(STA_W, 0x0, 0xFFFFFFFF, DPL_USER),
+    [SEG_TSS] = SEG_NULL};
+static struct dt_desc g_gdt_desc = {sizeof(g_gdt) - 1, (uint32_t)g_gdt};
+
+// 任务状态段
+static struct task_state g_ts;
+
+// 加载全局描述符表
+static inline void lgdt(struct dt_desc *dt)
+{
+    __asm__ __volatile__("lgdt (%0)" ::"r"(dt));
+    __asm__ __volatile__("movw %%ax, %%gs" ::"a"(USER_DS));
+    __asm__ __volatile__("movw %%ax, %%fs" ::"a"(USER_DS));
+    __asm__ __volatile__("movw %%ax, %%es" ::"a"(KERNEL_DS));
+    __asm__ __volatile__("movw %%ax, %%ds" ::"a"(KERNEL_DS));
+    __asm__ __volatile__("movw %%ax, %%ss" ::"a"(KERNEL_DS));
+    // reload cs
+    __asm__ __volatile__("ljmp %0, $1f\n 1:\n" ::"i"(KERNEL_CS));
+}
+
+// 初始化全局描述符表
+static void gdt_init(void)
+{
+    // 当中断需要提权时，会切换堆栈，比如提升到ring0，那么就会切换到TSS中的esp0和ss0
+    // 实际上每个用户进程会单独分配一个内核栈，这里初始化就先用内核本身的栈了
+    g_ts.ts_esp0 = kern_stack_top;
+    g_ts.ts_ss0 = KERNEL_DS;
+
+    // initialize the TSS field of the gdt
+    g_gdt[SEG_TSS] = SEG_1M_DESC(STS_T32A, (uint32_t)&g_ts, sizeof(g_ts), DPL_KERNEL);
+    g_gdt[SEG_TSS].sd_s = 0;
+
+    // 重新加载全局描述符表
+    lgdt(&g_gdt_desc);
+
+    // load the TSS
+    ltr(GD_TSS);
+}
+
+// 初始化物理内存管理
+void pmm_init(void)
+{
+    // 初始化物理内存管理器
+    pmm_manager_init();
+
+    // 初始化物理页
+    page_init();
+
+    // 初始化内核的页目录表
+    g_boot_pgdir = boot_alloc_page();
+    memset(g_boot_pgdir, 0, PG_SIZE);
+    g_boot_cr3 = PADDR(g_boot_pgdir);
+
+    // recursively insert boot_pgdir in itself
+    // to form a virtual page table at virtual address VPT
+    g_boot_pgdir[PDX(VPT)] = PADDR(g_boot_pgdir) | PDE_P | PDE_W;
+
+    // 设定页表，将线性地址[KERN_BASE，KERN_BASE + KMEM_SIZE)映射到物理地址[0, 0 + KMEM_SIZE)上
+    boot_map_segment(g_boot_pgdir, KERN_BASE, KMEM_SIZE, 0, PDE_W);
+
+    // 临时设置线性地址[0, 4M)映射到物理地址[0, 4M)，确保内核能正常工作
+    // 因为这时段机制还是生效的，如果这时开启页机制，那么没法对线性地址[0, 4M)做映射
+    g_boot_pgdir[0] = g_boot_pgdir[PDX(KERN_BASE)];
+
+    // 开启页机制
+    enable_paging();
+
+    // 最后再加载gdt，变为平坦模式，也就是逻辑地址等于线性地址，后续就靠页机制做重定位了
+    gdt_init();
+
+    // 这时可以取消临时的映射了
+    g_boot_pgdir[0] = 0;
+
+    kmalloc_init();
+}
+
+// 分配连续的n个页
 struct page_desc *alloc_pages(size_t n)
 {
     struct page_desc *page = NULL;
@@ -112,12 +264,12 @@ struct page_desc *alloc_pages(size_t n)
         }
         local_intr_restore(intr_flag);
 
-        if (page != NULL || n > 1 || swap_init_ok == 0)
-            break;
+        // if (page != NULL || n > 1 || swap_init_ok == 0)
+        //     break;
 
-        extern struct mm_struct *check_mm_struct;
-        // cprintf("page %x, call swap_out in alloc_pages %d\n",page, n);
-        swap_out(check_mm_struct, n, 0);
+        // extern struct mm_struct *check_mm_struct;
+        // // cprintf("page %x, call swap_out in alloc_pages %d\n",page, n);
+        // swap_out(check_mm_struct, n, 0);
     }
     return page;
 }
@@ -154,192 +306,6 @@ void tlb_invalidate(pde_t *pgdir, uintptr_t la)
     {
         invlpg((void *)la);
     }
-}
-
-// 为boot页目录表申请一页空间
-static void *boot_alloc_page(void)
-{
-    struct page_desc *p = alloc_page();
-    assert(p != NULL);
-    return page2kva(p);
-}
-
-// 根据线性地址la获取对应的页表项，如果create为true那么页表缺失的话自动创建
-pte_t *get_pte(pde_t *pgdir, uintptr_t la, bool create)
-{
-    pde_t *pdep = &pgdir[PDX(la)];
-    if (!(*pdep & PDE_P))
-    {
-        struct page_desc *page;
-        if (!create || (page = alloc_page()) == NULL)
-        {
-            return NULL;
-        }
-        page->ref = 1;
-        uintptr_t pa = page2pa(page);
-        memset(KADDR(pa), 0, PG_SIZE);
-        *pdep = pa | PTE_U | PTE_W | PTE_P;
-    }
-    return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];
-}
-
-// 获取线性地址la对应页描述符
-struct page_desc *get_page(pde_t *pgdir, uintptr_t la, pte_t **ptep_store)
-{
-    pte_t *ptep = get_pte(pgdir, la, 0);
-    if (ptep_store != NULL)
-    {
-        *ptep_store = ptep;
-    }
-    if (ptep != NULL && *ptep & PTE_P)
-    {
-        return pte2page(*ptep);
-    }
-    return NULL;
-}
-
-// 设定页表，将[la，la + size)映射到[pa, pa + size)上
-static void boot_map_segment(pde_t *pgdir, uintptr_t la, size_t size, uintptr_t pa, uint32_t perm)
-{
-    size_t n = ROUND_UP(size + PG_OFF(la), PG_SIZE) / PG_SIZE;
-    la = ROUND_DOWN(la, PG_SIZE);
-    pa = ROUND_DOWN(pa, PG_SIZE);
-    for (; n > 0; n--, la += PG_SIZE, pa += PG_SIZE)
-    {
-        pte_t *ptep = get_pte(pgdir, la, 1);
-        *ptep = pa | PTE_P | perm;
-    }
-}
-
-// 开启页机制
-static void enable_paging(void)
-{
-    lcr3(g_boot_cr3);
-
-    // turn on paging
-    uint32_t cr0 = rcr0();
-    cr0 |= CR0_PE | CR0_PG | CR0_AM | CR0_WP | CR0_NE | CR0_TS | CR0_EM | CR0_MP;
-    cr0 &= ~(CR0_TS | CR0_EM);
-    lcr0(cr0);
-}
-
-/* *
- * Task State Segment:
- *
- * The TSS may reside anywhere in memory. A special segment register called
- * the Task Register (TR) holds a segment selector that points a valid TSS
- * segment descriptor which resides in the GDT. Therefore, to use a TSS
- * the following must be done in function gdt_init:
- *   - create a TSS descriptor entry in GDT
- *   - add enough information to the TSS in memory as needed
- *   - load the TR register with a segment selector for that segment
- *
- * There are several fileds in TSS for specifying the new stack pointer when a
- * privilege level change happens. But only the fields SS0 and ESP0 are useful
- * in our os kernel.
- *
- * The field SS0 contains the stack segment selector for CPL = 0, and the ESP0
- * contains the new ESP value for CPL = 0. When an interrupt happens in protected
- * mode, the x86 CPU will look in the TSS for SS0 and ESP0 and load their value
- * into SS and ESP respectively.
- * */
-static struct task_state ts;
-
-/* *
- * Global Descriptor Table:
- *
- * The kernel and user segments are identical (except for the DPL). To load
- * the %ss register, the CPL must equal the DPL. Thus, we must duplicate the
- * segments for the user and the kernel. Defined as follows:
- *   - 0x0 :  unused (always faults -- for trapping NULL far pointers)
- *   - 0x8 :  kernel code segment
- *   - 0x10:  kernel data segment
- *   - 0x18:  user code segment
- *   - 0x20:  user data segment
- *   - 0x28:  defined for tss, initialized in gdt_init
- * */
-static struct seg_desc gdt[] = {
-    SEG_NULL,
-    [SEG_KTEXT] = SEG_DESC(STA_X | STA_R, 0x0, 0xFFFFFFFF, DPL_KERNEL),
-    [SEG_KDATA] = SEG_DESC(STA_W, 0x0, 0xFFFFFFFF, DPL_KERNEL),
-    [SEG_UTEXT] = SEG_DESC(STA_X | STA_R, 0x0, 0xFFFFFFFF, DPL_USER),
-    [SEG_UDATA] = SEG_DESC(STA_W, 0x0, 0xFFFFFFFF, DPL_USER),
-    [SEG_TSS] = SEG_NULL};
-
-static struct dt_desc gdt_dt = {sizeof(gdt) - 1, (uint32_t)gdt};
-
-/* *
- * lgdt - load the global descriptor table register and reset the
- * data/code segement registers for kernel.
- * */
-static inline void lgdt(struct dt_desc *dt)
-{
-    __asm__ __volatile__("lgdt (%0)" ::"r"(dt));
-    __asm__ __volatile__("movw %%ax, %%gs" ::"a"(USER_DS));
-    __asm__ __volatile__("movw %%ax, %%fs" ::"a"(USER_DS));
-    __asm__ __volatile__("movw %%ax, %%es" ::"a"(KERNEL_DS));
-    __asm__ __volatile__("movw %%ax, %%ds" ::"a"(KERNEL_DS));
-    __asm__ __volatile__("movw %%ax, %%ss" ::"a"(KERNEL_DS));
-    // reload cs
-    __asm__ __volatile__("ljmp %0, $1f\n 1:\n" ::"i"(KERNEL_CS));
-}
-
-// 临时内核栈空间
-uint8_t stack0[1024];
-
-// 初始化全局描述符表GDT和任务状态段TSS
-static void gdt_init(void)
-{
-    // 当中断需要提权时，会切换堆栈，比如提升到ring0，那么就会切换到TSS中的esp0和ss0
-    ts.ts_esp0 = (uint32_t)&stack0 + sizeof(stack0);
-    ts.ts_ss0 = KERNEL_DS;
-
-    // initialize the TSS field of the gdt
-    gdt[SEG_TSS] = SEG_1M_DESC(STS_T32A, (uint32_t)&ts, sizeof(ts), DPL_KERNEL);
-    gdt[SEG_TSS].sd_s = 0;
-
-    // reload all segment registers
-    lgdt(&gdt_dt);
-
-    // load the TSS
-    ltr(GD_TSS);
-}
-
-// 初始化物理内存管理
-void pmm_init(void)
-{
-    // 初始化物理内存管理器
-    pmm_manager_init();
-
-    // 初始化页描述符和页的映射关系
-    page_init();
-
-    // 初始化boot页目录表
-    g_boot_pgdir = boot_alloc_page();
-    memset(g_boot_pgdir, 0, PG_SIZE);
-    g_boot_cr3 = PADDR(g_boot_pgdir);
-
-    // recursively insert boot_pgdir in itself
-    // to form a virtual page table at virtual address VPT
-    g_boot_pgdir[PDX(VPT)] = PADDR(g_boot_pgdir) | PDE_P | PDE_W;
-
-    // 设定页表，将[KERN_BASE，KERN_BASE + KMEM_SIZE)映射到[0, 0 + KMEM_SIZE)上
-    boot_map_segment(g_boot_pgdir, KERN_BASE, KMEM_SIZE, 0, PDE_W);
-
-    // 临时设置线性地址[0, 4M)映射到物理地址[0, 4M)，确保内核能正常工作
-    // 因为这时段机制还是生效的，会将[KERN_BASE, KERN_BASE+4M)映射[0, 4M)，如果这时开启页机制，那么没法对线性地址[0, 4M)做映射
-    g_boot_pgdir[0] = g_boot_pgdir[PDX(KERN_BASE)];
-
-    // 开启页机制
-    enable_paging();
-
-    // 最后再加载gdt，变为平坦模式，也就是逻辑地址等于线性地址，后续就靠页机制做重定位了
-    gdt_init();
-
-    // 这时可以取消临时的映射了
-    g_boot_pgdir[0] = 0;
-
-    kmalloc_init();
 }
 
 // page_remove_pte - free an Page sturct which is related linear address la
@@ -436,16 +402,6 @@ struct page_desc *pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm)
     }
 
     return page;
-}
-
-/* *
- * load_esp0 - change the ESP0 in default task state segment,
- * so that we can use different kernel stack when we trap frame
- * user to kernel.
- * */
-void load_esp0(uintptr_t esp0)
-{
-    ts.ts_esp0 = esp0;
 }
 
 void unmap_range(pde_t *pgdir, uintptr_t start, uintptr_t end)

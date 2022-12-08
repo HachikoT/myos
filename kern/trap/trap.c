@@ -212,8 +212,12 @@ static void trap_dispatch(struct trap_frame *tf)
     //     syscall();
     //     break;
     case IRQ_OFFSET + IRQ_TIMER:
-        ticks++;
-        print_ticks();
+        g_ticks++;
+        if (g_ticks % 100 == 0)
+        {
+            print_ticks();
+        }
+
         // if (ticks % TICK_NUM == 0)
         // {
         //     assert(current != NULL);

@@ -6,4 +6,4 @@
 // first-fit 物理内存管理器
 extern struct pmm_manager g_ff_pmm_mgr;
 
-#endif /* ! __KERN_MM_FF_PMM_MANAGER_H__ */
+#endif // __KERN_MM_FF_PMM_MANAGER_H__

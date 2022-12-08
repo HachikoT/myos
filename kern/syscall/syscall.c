@@ -122,7 +122,7 @@ void syscall(void)
             return;
         }
     }
-    print_trapframe(tf);
+    print_trap_frame(tf);
     panic("undefined syscall %d, pid = %d, name = %s.\n",
           num, current->pid, current->name);
 }

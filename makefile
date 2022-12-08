@@ -50,7 +50,7 @@ $(BOOT_LIBS)::
 
 # kernel
 KERNEL_TARGET := $(BIN_DIR)/kernel
-KERNEL_MODULES := init trap debug driver libs
+KERNEL_MODULES := init mm trap debug driver libs
 KERNEL_LIBS := $(foreach n, $(KERNEL_MODULES), $(BUILD_DIR)/$(n)/lib/lib$(n).a)
 KERNEL_MODULE = $(patsubst lib%.a,%, $(notdir $@))
 

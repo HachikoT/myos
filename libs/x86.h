@@ -167,6 +167,35 @@ static inline uint32_t read_ebp(void)
     return ebp;
 }
 
+// cr0控制寄存器
+//
+// +-1--+-1--+-1--+-12--+-1--+--1--+--1-+-12--+-1--+-1--+--1-+--1-+--1-+--1-+
+// | PG | CD | NW | rsv | AM | rsv | WP | rsv | NE | ET | TS | EM | MP | PE |
+// +----+----+----+-----+----+-----+----+-----+----+----+----+----+----+----+
+//
+// PE：开启保护模式。PE=0表示CPU工作在实模式，PE=1表示CPU工作在保护模式。
+// MP：监控协处理器。MP=1表示协处理器在工作，MP=0表示协处理器未工作。
+// EM：协处理器仿真，当MP=0，EM=1时，表示正在使用软件仿真协处理器工作。
+// TS：任务转换，每当进行任务转换时，TS=1，任务转换完毕，TS=0。TS=1时不允许协处理器工作。
+// ET：处理器扩展类型，反映了所扩展的协处理器的类型，ET=0为80287，ET=1为80387。
+// NE：数值异常中断控制，NE=1时，如果运行协处理器指令发生故障，则用异常中断处理，NE=0时，则用外部中断处理。
+// WP：写保护，当WP=1时，对只读页面进行写操作会产生页故障。
+// AM：对齐标志，AM=1时，允许对齐检查，AM=0时不允许，关于对齐，在EFLAGS的AC标志时介绍过，在80486以后的CPU中，CPU进行对齐检查需要满足三个条件，AC=1、AM=1并且当前特权级为3。
+// NW（Not Write-through）和CD（Cache Disable），这两个标志都是用来控制CPU内部的CACHE的，当NW=0且CD=0时，CACHE使能，其它的组合说起来比较复杂。
+// PG：页式管理机制使能，PG=1时页式管理机制工作，否则不工作。
+//
+#define CR0_PE 0x00000001 // Protection Enable
+#define CR0_MP 0x00000002 // Monitor coProcessor
+#define CR0_EM 0x00000004 // Emulation
+#define CR0_TS 0x00000008 // Task Switched
+#define CR0_ET 0x00000010 // Extension Type
+#define CR0_NE 0x00000020 // Numeric Errror
+#define CR0_WP 0x00010000 // Write Protect
+#define CR0_AM 0x00040000 // Alignment Mask
+#define CR0_NW 0x20000000 // Not Writethrough
+#define CR0_CD 0x40000000 // Cache Disable
+#define CR0_PG 0x80000000 // Paging
+
 static inline void
 lcr0(uintptr_t cr0)
 {
