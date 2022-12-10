@@ -1,11 +1,6 @@
-#include <defs.h>
-#include <list.h>
-#include <sync.h>
-#include <wait.h>
-#include <proc.h>
-
 #include "kern/sync/wait.h"
 #include "kern/process/proc.h"
+#include "kern/sync/sync.h"
 
 void wait_init(wait_t *wait, struct proc_struct *proc)
 {
@@ -131,9 +126,9 @@ void wakeup_queue(wait_queue_t *queue, uint32_t wakeup_flags, bool del)
 
 void wait_current_set(wait_queue_t *queue, wait_t *wait, uint32_t wait_state)
 {
-    assert(current != NULL);
-    wait_init(wait, current);
-    current->state = PROC_SLEEPING;
-    current->wait_state = wait_state;
+    assert(g_cur_proc != NULL);
+    wait_init(wait, g_cur_proc);
+    g_cur_proc->state = PROC_SLEEPING;
+    g_cur_proc->wait_state = wait_state;
     wait_queue_add(queue, wait);
 }

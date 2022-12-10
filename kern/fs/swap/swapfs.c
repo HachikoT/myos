@@ -1,10 +1,10 @@
-#include "kern/fs/swapfs.h"
-#include "kern/fs/fs.h"
-#include "kern/mm/mem_layout.h"
-#include "kern/driver/ide.h"
-#include "kern/debug/assert.h"
 #include "kern/mm/swap.h"
+#include "kern/fs/swap/swapfs.h"
+#include "kern/mm/mmu.h"
+#include "kern/fs/fs.h"
+#include "kern/driver/ide.h"
 #include "kern/mm/pmm.h"
+#include "kern/debug/assert.h"
 
 void swapfs_init(void)
 {

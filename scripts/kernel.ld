@@ -3,7 +3,7 @@ OUTPUT_ARCH(i386)
 ENTRY(kern_entry)
 
 SECTIONS {
-	/* Load the kernel at this address: "." means the current address */
+	/* Load the kernel at this address: "." means the g_cur_proc address */
 	. = 0xC0100000;
 
 	.text : {

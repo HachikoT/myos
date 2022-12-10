@@ -5,12 +5,9 @@ OBJ_DIR := $(BUILD_DIR)/$(MODULE)/obj
 LIB_DIR := $(BUILD_DIR)/$(MODULE)/lib
 
 # 源文件以及中间目标文件和依赖文件
-SRC_DIRS := $(shell find $(SRC_DIR) -maxdepth 3 -type d)
-DEP_DIRS := $(patsubst $(SRC_DIR)%,$(DEP_DIR)%,$(SRC_DIRS))
-OBJ_DIRS := $(patsubst $(SRC_DIR)%,$(OBJ_DIR)%,$(SRC_DIRS))
-SRCS := $(foreach dir, $(SRC_DIRS), $(wildcard $(dir)/*.c))
-OBJS := $(patsubst $(SRC_DIR)%.c,$(OBJ_DIR)%.o, $(SRCS))
-DEPS := $(patsubst $(SRC_DIR)%.c,$(DEP_DIR)%.d, $(SRCS))
+SRCS := $(notdir $(wildcard $(SRC_DIR)/*.c))
+OBJS := $(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(basename $(SRCS))))
+DEPS := $(addprefix $(DEP_DIR)/, $(addsuffix .d, $(basename $(SRCS))))
 
 # 自动生成头文件依赖选项
 DEPFLAGS=-MT $@ -MMD -MP -MF $(DEP_DIR)/$*.d
@@ -26,7 +23,7 @@ $(TARGET):$(OBJS) | $(LIB_DIR)
 	@$(AR) $(ARFLAGS) $@ $^
 
 # 生成中间目标文件
-$(OBJ_DIR)/%.o:$(SRC_DIR)/%.c | $(OBJ_DIRS) $(DEP_DIRS)
+$(OBJ_DIR)/%.o:$(SRC_DIR)/%.c | $(OBJ_DIR) $(DEP_DIR)
 	@echo -e "\e[33m""Building object $@""\e[0m"
 	@$(CC) -c $(DEPFLAGS) $(CFLAGS) -o $@ $<
 
@@ -38,10 +35,10 @@ $(LIB_DIR):
 	@mkdir -p $@
 
 # 自动生成obj目录
-$(OBJ_DIRS):
+$(OBJ_DIR):
 	@mkdir -p $@
 
 # 自动生成.dep目录
-$(DEP_DIRS):
+$(DEP_DIR):
 	@mkdir -p $@
 

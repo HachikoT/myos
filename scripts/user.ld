@@ -6,7 +6,7 @@ OUTPUT_ARCH(i386)
 ENTRY(_start)
 
 SECTIONS {
-    /* Load programs at this address: "." means the current address */
+    /* Load programs at this address: "." means the g_cur_proc address */
     . = 0x800020;
 
     PROVIDE(__buser = .);

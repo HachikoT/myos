@@ -27,20 +27,16 @@ void kern_init(void)
     pic_init(); // 初始化中断控制器
     idt_init(); // 初始化中断描述符表
 
-    pic_enable(IRQ_KBD);
+    vmm_init();   // 初始化虚拟内存管理
+    sched_init(); // 初始化调度器
+    proc_init();  // 初始化进程模块
 
     clock_init();  // 初始化定时器
     intr_enable(); // 允许外部中断
-    while (1)
-    {
-    }
 
-    // vmm_init();   // init virtual memory management
-    // sched_init(); // init scheduler
-    // proc_init();  // init process table
+    ide_init();  // init ide devices
+    swap_init(); // 初始化虚拟内存
+    fs_init();   // 初始化文件系统
 
-    // ide_init();  // init ide devices
-    // swap_init(); // init swap
-
-    // cpu_idle(); // run idle process
+    cpu_idle();
 }

@@ -18,7 +18,7 @@ sys_exit(uint32_t arg[])
 static int
 sys_fork(uint32_t arg[])
 {
-    struct trap_frame *tf = current->tf;
+    struct trap_frame *tf = g_cur_proc->tf;
     uintptr_t stack = tf->tf_esp;
     return do_fork(0, stack, tf);
 }
@@ -57,7 +57,7 @@ sys_kill(uint32_t arg[])
 static int
 sys_getpid(uint32_t arg[])
 {
-    return current->pid;
+    return g_cur_proc->pid;
 }
 
 static int
@@ -78,35 +78,27 @@ sys_pgdir(uint32_t arg[])
 static uint32_t
 sys_gettime(uint32_t arg[])
 {
-    return (int)ticks;
-}
-static uint32_t
-sys_lab6_set_priority(uint32_t arg[])
-{
-    uint32_t priority = (uint32_t)arg[0];
-    lab6_set_priority(priority);
-    return 0;
+    return (int)g_ticks;
 }
 
 static int (*syscalls[])(uint32_t arg[]) = {
-    [SYS_exit] sys_exit,
-    [SYS_fork] sys_fork,
-    [SYS_wait] sys_wait,
-    [SYS_exec] sys_exec,
-    [SYS_yield] sys_yield,
-    [SYS_kill] sys_kill,
-    [SYS_getpid] sys_getpid,
-    [SYS_putc] sys_putc,
-    [SYS_pgdir] sys_pgdir,
-    [SYS_gettime] sys_gettime,
-    [SYS_lab6_set_priority] sys_lab6_set_priority,
+    [SYS_exit] = sys_exit,
+    [SYS_fork] = sys_fork,
+    [SYS_wait] = sys_wait,
+    [SYS_exec] = sys_exec,
+    [SYS_yield] = sys_yield,
+    [SYS_kill] = sys_kill,
+    [SYS_getpid] = sys_getpid,
+    [SYS_putc] = sys_putc,
+    [SYS_pgdir] = sys_pgdir,
+    [SYS_gettime] = sys_gettime,
 };
 
 #define NUM_SYSCALLS ((sizeof(syscalls)) / (sizeof(syscalls[0])))
 
 void syscall(void)
 {
-    struct trap_frame *tf = current->tf;
+    struct trap_frame *tf = g_cur_proc->tf;
     uint32_t arg[5];
     int num = tf->tf_regs.reg_eax;
     if (num >= 0 && num < NUM_SYSCALLS)
@@ -124,5 +116,5 @@ void syscall(void)
     }
     print_trap_frame(tf);
     panic("undefined syscall %d, pid = %d, name = %s.\n",
-          num, current->pid, current->name);
+          num, g_cur_proc->pid, g_cur_proc->name);
 }

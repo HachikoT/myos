@@ -194,12 +194,18 @@ static inline void lgdt(struct dt_desc *dt)
     __asm__ __volatile__("ljmp %0, $1f\n 1:\n" ::"i"(KERNEL_CS));
 }
 
+// 更新tss的esp0，指定ring0的栈地址
+void load_esp0(uintptr_t esp0)
+{
+    g_ts.ts_esp0 = esp0;
+}
+
 // 初始化全局描述符表
 static void gdt_init(void)
 {
     // 当中断需要提权时，会切换堆栈，比如提升到ring0，那么就会切换到TSS中的esp0和ss0
     // 实际上每个用户进程会单独分配一个内核栈，这里初始化就先用内核本身的栈了
-    g_ts.ts_esp0 = kern_stack_top;
+    load_esp0(kern_stack_top);
     g_ts.ts_ss0 = KERNEL_DS;
 
     // initialize the TSS field of the gdt
@@ -264,12 +270,12 @@ struct page_desc *alloc_pages(size_t n)
         }
         local_intr_restore(intr_flag);
 
-        // if (page != NULL || n > 1 || swap_init_ok == 0)
-        //     break;
+        if (page != NULL || n > 1 || swap_init_ok == 0)
+            break;
 
-        // extern struct mm_struct *check_mm_struct;
-        // // cprintf("page %x, call swap_out in alloc_pages %d\n",page, n);
-        // swap_out(check_mm_struct, n, 0);
+        extern struct mm_struct *check_mm_struct;
+        // cprintf("page %x, call swap_out in alloc_pages %d\n",page, n);
+        swap_out(check_mm_struct, n, 0);
     }
     return page;
 }
@@ -369,10 +375,8 @@ int page_insert(pde_t *pgdir, struct page_desc *page, uintptr_t la, uint32_t per
     return 0;
 }
 
-// pgdir_alloc_page - call alloc_page & page_insert functions to
-//                  - allocate a page size memory & setup an addr map
-//                  - pa<->la with linear address la and the PDT pgdir
-struct page_desc *pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm)
+// 在指定的页目录表下分配对应于线性地址la的页帧
+struct page_desc *pgdir_alloc_page(struct mm_struct *mm, pde_t *pgdir, uintptr_t la, uint32_t perm)
 {
     struct page_desc *page = alloc_page();
     if (page != NULL)
@@ -384,19 +388,19 @@ struct page_desc *pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm)
         }
         if (swap_init_ok)
         {
-            if (check_mm_struct != NULL)
+            if (mm != NULL)
             {
-                swap_map_swappable(check_mm_struct, la, page, 0);
+                swap_map_swappable(mm, la, page, 0);
                 page->pra_vaddr = la;
                 assert(page->ref == 1);
                 // cprintf("get No. %d  page: pra_vaddr %x, pra_link.prev %x, pra_link_next %x in pgdir_alloc_page\n", (page-pages), page->pra_vaddr,page->pra_page_link.prev, page->pra_page_link.next);
             }
             else
-            { // now current is existed, should fix it in the future
-              // swap_map_swappable(current->mm, la, page, 0);
+            { // now g_cur_proc is existed, should fix it in the future
+              // swap_map_swappable(g_cur_proc->mm, la, page, 0);
               // page->pra_vaddr=la;
               // assert(page_ref(page) == 1);
-              // panic("pgdir_alloc_page: no pages. now current is existed, should fix it in the future\n");
+              // panic("pgdir_alloc_page: no pages. now g_cur_proc is existed, should fix it in the future\n");
             }
         }
     }
@@ -479,20 +483,7 @@ int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool shar
             assert(page != NULL);
             assert(npage != NULL);
             int ret = 0;
-            /* LAB5:EXERCISE2 YOUR CODE
-             * replicate content of page to npage, build the map of phy addr of nage with the linear addr start
-             *
-             * Some Useful MACROs and DEFINEs, you can use them in below implementation.
-             * MACROs or Functions:
-             *    page2kva(struct Page *page): return the kernel vritual addr of memory which page managed (SEE pmm.h)
-             *    page_insert: build the map of phy addr of an Page with the linear addr la
-             *    memcpy: typical memory copy function
-             *
-             * (1) find src_kvaddr: the kernel virtual address of page
-             * (2) find dst_kvaddr: the kernel virtual address of npage
-             * (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
-             * (4) build the map of phy addr of  nage with the linear addr start
-             */
+
             void *kva_src = page2kva(page);
             void *kva_dst = page2kva(npage);
 
@@ -515,7 +506,7 @@ int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool shar
  * can be accessed though a "virtual page table" at virtual address VPT. And the
  * PTE for number n is stored in vpt[n].
  *
- * A second consequence is that the contents of the current page directory will
+ * A second consequence is that the contents of the g_cur_proc page directory will
  * always available at virtual address PGADDR(PDX(VPT), PDX(VPT), 0), to which
  * vpd is set bellow.
  * */
@@ -536,7 +527,7 @@ perm2str(int perm)
 
 // get_pgtable_items - In [left, right] range of PDT or PT, find a continuous linear addr space
 //                   - (left_store*X_SIZE~right_store*X_SIZE) for PDT or PT
-//                   - X_SIZE=PTSIZE=4M, if PDT; X_SIZE=PGSIZE=4K, if PT
+//                   - X_SIZE=PTSIZE=4M, if PDT; X_SIZE=PG_SIZE=4K, if PT
 //  paramemters:
 //   left:        no use ???
 //   right:       the high side of table's range

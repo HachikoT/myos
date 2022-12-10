@@ -1,5 +1,5 @@
 #include "kern/mm/swap.h"
-#include "kern/fs/swapfs.h"
+#include "kern/fs/swap/swapfs.h"
 #include "kern/mm/mem_layout.h"
 #include "kern/debug/assert.h"
 #include "kern/driver/stdio.h"

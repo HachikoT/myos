@@ -285,7 +285,7 @@ read_eip(void)
 
 /* *
  * print_stackframe - print a list of the saved eip values from the nested 'call'
- * instructions that led to the current point of execution
+ * instructions that led to the g_cur_proc point of execution
  *
  * The x86 stack pointer, namely esp, points to the lowest location on the stack
  * that is currently in use. Everything below that location in stack is free. Pushing
@@ -296,7 +296,7 @@ read_eip(void)
  * The ebp (base pointer) register, in contrast, is associated with the stack
  * primarily by software convention. On entry to a C function, the function's
  * prologue code normally saves the previous function's base pointer by pushing
- * it onto the stack, and then copies the current esp value into ebp for the duration
+ * it onto the stack, and then copies the g_cur_proc esp value into ebp for the duration
  * of the function. If all the functions in a program obey this convention,
  * then at any given point during the program's execution, it is possible to trace
  * back through the stack by following the chain of saved ebp pointers and determining
@@ -306,8 +306,8 @@ read_eip(void)
  * were passed to it, but you aren't sure who passed the bad arguments. A stack
  * backtrace lets you find the offending function.
  *
- * The inline function read_ebp() can tell us the value of current ebp. And the
- * non-inline function read_eip() is useful, it can read the value of current eip,
+ * The inline function read_ebp() can tell us the value of g_cur_proc ebp. And the
+ * non-inline function read_eip() is useful, it can read the value of g_cur_proc eip,
  * since while calling this function, read_eip() can read the caller's eip from
  * stack easily.
  *

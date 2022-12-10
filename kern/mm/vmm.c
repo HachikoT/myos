@@ -10,39 +10,12 @@
 #include "libs/x86.h"
 #include "libs/error.h"
 
-/*
-  vmm design include two parts: mm_struct (mm) & vma_struct (vma)
-  mm is the memory manager for the set of continuous virtual memory
-  area which have the same PDT. vma is a continuous virtual memory area.
-  There a linear link list for vma & a redblack link list for vma in mm.
----------------
-  mm related functions:
-   golbal functions
-     struct mm_struct * mm_create(void)
-     void mm_destroy(struct mm_struct *mm)
-     int do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr)
---------------
-  vma related functions:
-   global functions
-     struct vma_struct * vma_create (uintptr_t vm_start, uintptr_t vm_end,...)
-     void insert_vma_struct(struct mm_struct *mm, struct vma_struct *vma)
-     struct vma_struct * find_vma(struct mm_struct *mm, uintptr_t addr)
-   local functions
-     inline void check_vma_overlap(struct vma_struct *prev, struct vma_struct *next)
----------------
-   check correctness functions
-     void check_vmm(void);
-     void check_vma_struct(void);
-     void check_pgfault(void);
-*/
-
 static void check_vmm(void);
 static void check_vma_struct(void);
 static void check_pgfault(void);
 
-// mm_create -  alloc a mm_struct & initialize it.
-struct mm_struct *
-mm_create(void)
+// 创建mm对象
+struct mm_struct *mm_create(void)
 {
     struct mm_struct *mm = kmalloc(sizeof(struct mm_struct));
 
@@ -54,19 +27,37 @@ mm_create(void)
         mm->map_count = 0;
 
         if (swap_init_ok)
+        {
+            // 为mm设置好当前使用的swap_manager
             swap_init_mm(mm);
+        }
         else
+        {
             mm->sm_priv = NULL;
+        }
 
-        set_mm_count(mm, 0);
-        lock_init(&(mm->mm_lock));
+        mm->mm_count = 0;
+        sem_init(&(mm->mm_sem), 1);
     }
     return mm;
 }
 
-// vma_create - alloc a vma_struct & initialize it. (addr range: vm_start~vm_end)
-struct vma_struct *
-vma_create(uintptr_t vm_start, uintptr_t vm_end, uint32_t vm_flags)
+// 销毁mm对象
+void mm_destroy(struct mm_struct *mm)
+{
+
+    list_entry_t *list = &(mm->mmap_list), *le;
+    while ((le = list_next(list)) != list)
+    {
+        list_del(le);
+        kfree(le2vma(le, list_link), sizeof(struct vma_struct)); // kfree vma
+    }
+    kfree(mm, sizeof(struct mm_struct)); // kfree mm
+    mm = NULL;
+}
+
+// 创建vma对象
+struct vma_struct *vma_create(uintptr_t vm_start, uintptr_t vm_end, uint32_t vm_flags)
 {
     struct vma_struct *vma = kmalloc(sizeof(struct vma_struct));
 
@@ -79,9 +70,8 @@ vma_create(uintptr_t vm_start, uintptr_t vm_end, uint32_t vm_flags)
     return vma;
 }
 
-// find_vma - find a vma  (vma->vm_start <= addr <= vma_vm_end)
-struct vma_struct *
-find_vma(struct mm_struct *mm, uintptr_t addr)
+// 在mm中查找包含addr地址的vma
+struct vma_struct *find_vma(struct mm_struct *mm, uintptr_t addr)
 {
     struct vma_struct *vma = NULL;
     if (mm != NULL)
@@ -113,16 +103,15 @@ find_vma(struct mm_struct *mm, uintptr_t addr)
     return vma;
 }
 
-// check_vma_overlap - check if vma1 overlaps vma2 ?
-static inline void
-check_vma_overlap(struct vma_struct *prev, struct vma_struct *next)
+// 检查两个vma对应的虚拟地址块是否相交
+static inline void check_vma_overlap(struct vma_struct *prev, struct vma_struct *next)
 {
     assert(prev->vm_start < prev->vm_end);
     assert(prev->vm_end <= next->vm_start);
     assert(next->vm_start < next->vm_end);
 }
 
-// insert_vma_struct -insert vma in mm's list link
+// 在mm中插入vma，必须保证新的vma不会和已有的相交
 void insert_vma_struct(struct mm_struct *mm, struct vma_struct *vma)
 {
     assert(vma->vm_start < vma->vm_end);
@@ -185,7 +174,7 @@ int dup_mmap(struct mm_struct *to, struct mm_struct *from)
 
 void exit_mmap(struct mm_struct *mm)
 {
-    assert(mm != NULL && mm_count(mm) == 0);
+    assert(mm != NULL && mm->mm_count == 0);
     pde_t *pgdir = mm->pgdir;
     list_entry_t *list = &(mm->mmap_list), *le = list;
     while ((le = list_next(le)) != list)
@@ -200,24 +189,10 @@ void exit_mmap(struct mm_struct *mm)
     }
 }
 
-// mm_destroy - free mm and mm internal fields
-void mm_destroy(struct mm_struct *mm)
-{
-
-    list_entry_t *list = &(mm->mmap_list), *le;
-    while ((le = list_next(list)) != list)
-    {
-        list_del(le);
-        kfree(le2vma(le, list_link), sizeof(struct vma_struct)); // kfree vma
-    }
-    kfree(mm, sizeof(struct mm_struct)); // kfree mm
-    mm = NULL;
-}
-
-// vmm_init - initialize virtual memory management
-//          - now just call check_vmm to check correctness of vmm
+// 初始化虚拟内存管理，暂时不用做什么事
 void vmm_init(void)
 {
+    cprintf("check_vmm() begin.\n");
     check_vmm();
 }
 
@@ -387,41 +362,26 @@ check_pgfault(void)
 // page fault number
 volatile unsigned int pgfault_num = 0;
 
-/* do_pgfault - interrupt handler to process the page fault execption
- * @mm         : the control struct for a set of vma using the same PDT
- * @error_code : the error code recorded in trapframe->tf_err which is setted by x86 hardware
- * @addr       : the addr which causes a memory access exception, (the contents of the CR2 register)
- *
- * CALL GRAPH: trap--> trap_dispatch-->pgfault_handler-->do_pgfault
- * The processor provides ucore's do_pgfault function with two items of information to aid in diagnosing
- * the exception and recovering from it.
- *   (1) The contents of the CR2 register. The processor loads the CR2 register with the
- *       32-bit linear address that generated the exception. The do_pgfault fun can
- *       use this address to locate the corresponding page directory and page-table
- *       entries.
- *   (2) An error code on the kernel stack. The error code for a page fault has a format different from
- *       that for other exceptions. The error code tells the exception handler three things:
- *         -- The P flag   (bit 0) indicates whether the exception was due to a not-present page (0)
- *            or to either an access rights violation or the use of a reserved bit (1).
- *         -- The W/R flag (bit 1) indicates whether the memory access that caused the exception
- *            was a read (0) or write (1).
- *         -- The U/S flag (bit 2) indicates whether the processor was executing at user mode (1)
- *            or supervisor mode (0) at the time of the exception.
- */
+// 缺页异常发生后
+// cr2寄存器会存储引起缺页异常的线性地址
+// 中断硬件压入的错误码
+//     - bit0（P）表示是页不存在（0），还是访问权限错误（1）
+//     - bit1（W/R）表示引起缺页异常的是读操作（0）还是写操作（1）
+//     - bit2（U/S）表示操作者的权限，内核态supervisor（0），用户态user（1）
 int do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr)
 {
     int ret = -E_INVAL;
-    // try to find a vma which include addr
-    struct vma_struct *vma = find_vma(mm, addr);
-
     pgfault_num++;
-    // If the addr is in the range of a mm's vma?
+
+    // 判断缺页异常的地址是不是在已分配的虚拟空间中
+    struct vma_struct *vma = find_vma(mm, addr);
     if (vma == NULL || vma->vm_start > addr)
     {
         cprintf("not valid addr %x, and  can not find it in vma\n", addr);
         goto failed;
     }
-    // check the error_code
+
+    // 判断是哪种缺页错误
     switch (error_code & 3)
     {
     default:
@@ -459,25 +419,6 @@ int do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr)
     ret = -E_NO_MEM;
 
     pte_t *ptep = NULL;
-    /*LAB3 EXERCISE 1: YOUR CODE
-     * Maybe you want help comment, BELOW comments can help you finish the code
-     *
-     * Some Useful MACROs and DEFINEs, you can use them in below implementation.
-     * MACROs or Functions:
-     *   get_pte : get an pte and return the kernel virtual address of this pte for la
-     *             if the PT contians this pte didn't exist, alloc a page for PT (notice the 3th parameter '1')
-     *   pgdir_alloc_page : call alloc_page & page_insert functions to allocate a page size memory & setup
-     *             an addr map pa<--->la with linear address la and the PDT pgdir
-     * DEFINES:
-     *   VM_WRITE  : If vma->vm_flags & VM_WRITE == 1/0, then the vma is writable/non writable
-     *   PTE_W           0x002                   // page table/directory entry flags bit : Writeable
-     *   PTE_U           0x004                   // page table/directory entry flags bit : User can access
-     * VARIABLES:
-     *   mm->pgdir : the PDT of these vma
-     *
-     */
-    // try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
-    // (notice the 3th parameter '1')
     if ((ptep = get_pte(mm->pgdir, addr, 1)) == NULL)
     {
         cprintf("get_pte in do_pgfault failed\n");
@@ -486,7 +427,7 @@ int do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr)
 
     if (*ptep == 0)
     { // if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
-        if (pgdir_alloc_page(mm->pgdir, addr, perm) == NULL)
+        if (pgdir_alloc_page(mm, mm->pgdir, addr, perm) == NULL)
         {
             cprintf("pgdir_alloc_page in do_pgfault failed\n");
             goto failed;
@@ -550,4 +491,52 @@ bool user_mem_check(struct mm_struct *mm, uintptr_t addr, size_t len, bool write
         return 1;
     }
     return KERN_ACCESS(addr, addr + len);
+}
+
+bool copy_string(struct mm_struct *mm, char *dst, const char *src, size_t maxn)
+{
+    size_t alen, part = ROUND_DOWN((uintptr_t)src + PG_SIZE, PG_SIZE) - (uintptr_t)src;
+    while (1)
+    {
+        if (part > maxn)
+        {
+            part = maxn;
+        }
+        if (!user_mem_check(mm, (uintptr_t)src, part, 0))
+        {
+            return 0;
+        }
+        if ((alen = strnlen(src, part)) < part)
+        {
+            memcpy(dst, src, alen + 1);
+            return 1;
+        }
+        if (part == maxn)
+        {
+            return 0;
+        }
+        memcpy(dst, src, part);
+        dst += part, src += part, maxn -= part;
+        part = PG_SIZE;
+    }
+}
+
+bool copy_from_user(struct mm_struct *mm, void *dst, const void *src, size_t len, bool writable)
+{
+    if (!user_mem_check(mm, (uintptr_t)src, len, writable))
+    {
+        return 0;
+    }
+    memcpy(dst, src, len);
+    return 1;
+}
+
+bool copy_to_user(struct mm_struct *mm, void *dst, const void *src, size_t len)
+{
+    if (!user_mem_check(mm, (uintptr_t)dst, len, 1))
+    {
+        return 0;
+    }
+    memcpy(dst, src, len);
+    return 1;
 }

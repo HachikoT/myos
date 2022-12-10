@@ -50,7 +50,7 @@ $(BOOT_LIBS)::
 
 # kernel
 KERNEL_TARGET := $(BIN_DIR)/kernel
-KERNEL_MODULES := init mm trap debug driver libs
+KERNEL_MODULES := init syscall trap schedule process fs mm sync debug driver libs
 KERNEL_LIBS := $(foreach n, $(KERNEL_MODULES), $(BUILD_DIR)/$(n)/lib/lib$(n).a)
 KERNEL_MODULE = $(patsubst lib%.a,%, $(notdir $@))
 
@@ -59,7 +59,7 @@ kernel:$(KERNEL_TARGET)
 
 $(KERNEL_TARGET):$(KERNEL_LIBS) | $(BIN_DIR)
 	@echo -e "\e[32m""Linking executable $@""\e[0m"
-	@$(LD) $(LDFLAGS) -T $(TOP_DIR)/scripts/kernel.ld -o $@ $(KERNEL_LIBS)
+	@$(LD) $(LDFLAGS) -T $(TOP_DIR)/scripts/kernel.ld -o $@ --start-group $(KERNEL_LIBS) --end-group
 
 $(KERNEL_LIBS)::
 	@make -s -f $(TOP_DIR)/$(if $(filter-out libs,$(KERNEL_MODULE)),kern/)$(KERNEL_MODULE)/makefile MODULE=$(KERNEL_MODULE)

@@ -1,15 +1,8 @@
-#include <defs.h>
-#include <wait.h>
-#include <atomic.h>
-#include <kmalloc.h>
-#include <sem.h>
-#include <proc.h>
-#include <sync.h>
-#include <assert.h>
-
 #include "kern/sync/sem.h"
 #include "kern/process/proc.h"
 #include "kern/sync/sync.h"
+#include "kern/debug/assert.h"
+#include "kern/mm/kmalloc.h"
 
 void sem_init(semaphore_t *sem, int value)
 {
@@ -17,7 +10,7 @@ void sem_init(semaphore_t *sem, int value)
     wait_queue_init(&(sem->wait_queue));
 }
 
-static __noinline void __up(semaphore_t *sem, uint32_t wait_state)
+static void __up(semaphore_t *sem, uint32_t wait_state)
 {
     bool intr_flag;
     local_intr_save(intr_flag);
@@ -36,7 +29,7 @@ static __noinline void __up(semaphore_t *sem, uint32_t wait_state)
     local_intr_restore(intr_flag);
 }
 
-static __noinline uint32_t __down(semaphore_t *sem, uint32_t wait_state)
+static uint32_t __down(semaphore_t *sem, uint32_t wait_state)
 {
     bool intr_flag;
     local_intr_save(intr_flag);

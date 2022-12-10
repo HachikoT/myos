@@ -6,5 +6,5 @@ kernel_thread_entry:        # void kernel_thread(void)
     call *%ebx              # call fn
 
     pushl %eax              # save the return value of fn(arg)
-    call do_exit            # call do_exit to terminate current thread
+    call do_exit            # call do_exit to terminate g_cur_proc thread
 

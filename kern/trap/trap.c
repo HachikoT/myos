@@ -8,6 +8,8 @@
 #include "kern/debug/assert.h"
 #include "libs/error.h"
 #include "kern/driver/picirq.h"
+#include "kern/mm/vmm.h"
+#include "kern/process/proc.h"
 
 #define TICK_NUM 100
 
@@ -138,47 +140,38 @@ void print_trap_frame(struct trap_frame *tf)
     }
 }
 
-// static inline void print_pgfault(struct trap_frame *tf)
-// {
-//     /* error_code:
-//      * bit 0 == 0 means no page found, 1 means protection fault
-//      * bit 1 == 0 means read, 1 means write
-//      * bit 2 == 0 means kernel, 1 means user
-//      * */
-//     cprintf("page fault at 0x%08x: %c/%c [%s].\n", rcr2(),
-//             (tf->tf_err & 4) ? 'U' : 'K',
-//             (tf->tf_err & 2) ? 'W' : 'R',
-//             (tf->tf_err & 1) ? "protection fault" : "no page found");
-// }
+static inline void
+print_pgfault(struct trap_frame *tf)
+{
+    /* error_code:
+     * bit 0 == 0 means no page found, 1 means protection fault
+     * bit 1 == 0 means read, 1 means write
+     * bit 2 == 0 means kernel, 1 means user
+     * */
+    cprintf("page fault at 0x%08x: %c/%c [%s].\n", rcr2(),
+            (tf->tf_err & 4) ? 'U' : 'K',
+            (tf->tf_err & 2) ? 'W' : 'R',
+            (tf->tf_err & 1) ? "protection fault" : "no page found");
+}
 
-// static int pgfault_handler(struct trap_frame *tf)
-// {
-//     extern struct mm_struct *check_mm_struct;
-//     if (check_mm_struct != NULL)
-//     { // used for test check_swap
-//         print_pgfault(tf);
-//     }
-//     struct mm_struct *mm;
-//     if (check_mm_struct != NULL)
-//     {
-//         assert(current == idleproc);
-//         mm = check_mm_struct;
-//     }
-//     else
-//     {
-//         if (current == NULL)
-//         {
-//             print_trapframe(tf);
-//             print_pgfault(tf);
-//             panic("unhandled page fault.\n");
-//         }
-//         mm = current->mm;
-//     }
-//     return do_pgfault(mm, tf->tf_err, rcr2());
-// }
+static int pgfault_handler(struct trap_frame *tf)
+{
 
-// /* temporary trapframe or pointer to trapframe */
-// struct trap_frame switchk2u, *switchu2k;
+    if (g_cur_proc == NULL)
+    {
+        print_trap_frame(tf);
+        print_pgfault(tf);
+        panic("unhandled page fault.\n");
+    }
+    struct mm_struct *mm = g_cur_proc->mm;
+    // 缺页异常发生后
+    // cr2寄存器会存储引起缺页异常的线性地址
+    // 中断硬件压入的错误码
+    //     - bit0（P）表示是页不存在（0），还是访问权限错误（1）
+    //     - bit1（W/R）表示引起缺页异常的是读操作（0）还是写操作（1）
+    //     - bit2（U/S）表示操作者的权限，内核态supervisor（0），用户态user（1）
+    return do_pgfault(mm, tf->tf_err, rcr2());
+}
 
 // 按类型处理中断
 static void trap_dispatch(struct trap_frame *tf)
@@ -188,29 +181,30 @@ static void trap_dispatch(struct trap_frame *tf)
 
     switch (tf->tf_trapno)
     {
-    // case T_PGFLT: // page fault
-    //     if ((ret = pgfault_handler(tf)) != 0)
-    //     {
-    //         print_trapframe(tf);
-    //         if (current == NULL)
-    //         {
-    //             panic("handle pgfault failed. ret=%d\n", ret);
-    //         }
-    //         else
-    //         {
-    //             if (trap_in_kernel(tf))
-    //             {
-    //                 panic("handle pgfault failed in kernel mode. ret=%d\n", ret);
-    //             }
-    //             cprintf("killed by kernel.\n");
-    //             panic("handle user mode pgfault failed. ret=%d\n", ret);
-    //             do_exit(-E_KILLED);
-    //         }
-    //     }
-    //     break;
-    // case T_SYSCALL:
-    //     syscall();
-    //     break;
+    case T_PGFLT:
+        if ((ret = pgfault_handler(tf)) != 0)
+        {
+            panic("handle pgfault failed. ret=%d\n", ret);
+            print_trap_frame(tf);
+            if (g_cur_proc == NULL)
+            {
+                panic("handle pgfault failed. ret=%d\n", ret);
+            }
+            else
+            {
+                if (tf->tf_cs == (uint16_t)KERNEL_CS)
+                {
+                    panic("handle pgfault failed in kernel mode. ret=%d\n", ret);
+                }
+                cprintf("killed by kernel.\n");
+                panic("handle user mode pgfault failed. ret=%d\n", ret);
+                do_exit(-E_KILLED);
+            }
+        }
+        break;
+    case T_SYSCALL:
+        syscall();
+        break;
     case IRQ_OFFSET + IRQ_TIMER:
         g_ticks++;
         if (g_ticks % 100 == 0)
@@ -220,8 +214,8 @@ static void trap_dispatch(struct trap_frame *tf)
 
         // if (ticks % TICK_NUM == 0)
         // {
-        //     assert(current != NULL);
-        //     current->need_resched = 1;
+        //     assert(g_cur_proc != NULL);
+        //     g_cur_proc->need_resched = 1;
         // }
         break;
     // case IRQ_OFFSET + IRQ_COM1:
@@ -248,17 +242,6 @@ static void trap_dispatch(struct trap_frame *tf)
     //         // set temporary stack
     //         // then iret will jump to the right stack
     //         *((uint32_t *)tf - 1) = (uint32_t)&switchk2u;
-    //     }
-    //     break;
-    // case T_SWITCH_TOK:
-    //     if (tf->tf_cs != KERNEL_CS)
-    //     {
-    //         tf->tf_cs = KERNEL_CS;
-    //         tf->tf_ds = tf->tf_es = KERNEL_DS;
-    //         tf->tf_eflags &= ~FL_IOPL_MASK;
-    //         switchu2k = (struct trap_frame *)(tf->tf_esp - (sizeof(struct trap_frame) - 8));
-    //         memmove(switchu2k, tf, sizeof(struct trap_frame) - 8);
-    //         *((uint32_t *)tf - 1) = (uint32_t)switchu2k;
     //     }
     //     break;
     // case IRQ_OFFSET + IRQ_IDE1:

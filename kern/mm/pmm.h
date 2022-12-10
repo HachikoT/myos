@@ -5,6 +5,7 @@
 #include "kern/mm/mem_layout.h"
 #include "kern/mm/mmu.h"
 #include "kern/debug/assert.h"
+#include "kern/mm/vmm.h"
 
 // 物理内存管理框架，主要用来管理物理页
 struct pmm_manager
@@ -79,13 +80,16 @@ size_t n_free_pages(void);                         // 获取内存管理器中�
 
 int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share);
 
-struct page_desc *pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm);
+struct page_desc *pgdir_alloc_page(struct mm_struct *mm, pde_t *pgdir, uintptr_t la, uint32_t perm);
 void unmap_range(pde_t *pgdir, uintptr_t start, uintptr_t end);
 void exit_range(pde_t *pgdir, uintptr_t start, uintptr_t end);
 
+// 根据线性地址la获取对应的页表项，如果create为true那么页表缺失的话自动创建
+pte_t *get_pte(pde_t *pgdir, uintptr_t la, bool create);
+
 void pmm_init(void); // 初始化物理内存管理
 
-void load_esp0(uintptr_t esp0);
+void load_esp0(uintptr_t esp0); // 更新tss的esp0，指定ring0的栈地址
 
 void print_pgdir(void);
 

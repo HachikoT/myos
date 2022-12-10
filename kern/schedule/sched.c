@@ -2,45 +2,41 @@
 #include "kern/debug/assert.h"
 #include "libs/list.h"
 #include "kern/sync/sync.h"
-#include "kern/schedule/default_sched.h"
+#include "kern/schedule/sched_stride.h"
 #include "kern/driver/stdio.h"
 
-// the list of timer
-static list_entry_t timer_list;
-
-static struct sched_class *sched_class;
-
-static struct run_queue *rq;
-
+static list_entry_t g_timer_list;         // 定时器列表
+static struct sched_class *g_sched_class; // 调度器
+static struct run_queue *g_rq;            // 运行队列
 static struct run_queue __rq;
 
 static inline void
 sched_class_enqueue(struct proc_struct *proc)
 {
-    if (proc != idleproc)
+    if (proc != g_idle_proc)
     {
-        sched_class->enqueue(rq, proc);
+        g_sched_class->enqueue(g_rq, proc);
     }
 }
 
 static inline void
 sched_class_dequeue(struct proc_struct *proc)
 {
-    sched_class->dequeue(rq, proc);
+    g_sched_class->dequeue(g_rq, proc);
 }
 
 static inline struct proc_struct *
 sched_class_pick_next(void)
 {
-    return sched_class->pick_next(rq);
+    return g_sched_class->pick_next(g_rq);
 }
 
 static void
 sched_class_proc_tick(struct proc_struct *proc)
 {
-    if (proc != idleproc)
+    if (proc != g_idle_proc)
     {
-        sched_class->proc_tick(rq, proc);
+        g_sched_class->proc_tick(g_rq, proc);
     }
     else
     {
@@ -50,15 +46,15 @@ sched_class_proc_tick(struct proc_struct *proc)
 
 void sched_init(void)
 {
-    list_init(&timer_list);
+    list_init(&g_timer_list);
 
-    sched_class = &default_sched_class;
+    g_sched_class = &g_stride_sched_class;
 
-    rq = &__rq;
-    rq->max_time_slice = MAX_TIME_SLICE;
-    sched_class->init(rq);
+    g_rq = &__rq;
+    g_rq->max_time_slice = MAX_TIME_SLICE;
+    g_sched_class->init(g_rq);
 
-    cprintf("sched class: %s\n", sched_class->name);
+    cprintf("sched class: %s\n", g_sched_class->name);
 }
 
 void wakeup_proc(struct proc_struct *proc)
@@ -71,7 +67,7 @@ void wakeup_proc(struct proc_struct *proc)
         {
             proc->state = PROC_RUNNABLE;
             proc->wait_state = 0;
-            if (proc != current)
+            if (proc != g_cur_proc)
             {
                 sched_class_enqueue(proc);
             }
@@ -90,10 +86,10 @@ void schedule(void)
     struct proc_struct *next;
     local_intr_save(intr_flag);
     {
-        current->need_resched = 0;
-        if (current->state == PROC_RUNNABLE)
+        g_cur_proc->need_resched = 0;
+        if (g_cur_proc->state == PROC_RUNNABLE)
         {
-            sched_class_enqueue(current);
+            sched_class_enqueue(g_cur_proc);
         }
         if ((next = sched_class_pick_next()) != NULL)
         {
@@ -101,10 +97,10 @@ void schedule(void)
         }
         if (next == NULL)
         {
-            next = idleproc;
+            next = g_idle_proc;
         }
         next->runs++;
-        if (next != current)
+        if (next != g_cur_proc)
         {
             proc_run(next);
         }
