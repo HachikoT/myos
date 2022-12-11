@@ -31,6 +31,9 @@ void idt_init(void)
     {
         SET_IGATE(g_idt[i], __vectors[i], GD_KTEXT, DPL_KERNEL);
     }
+    // 一般而言不检查门描述符里面的DPL，除了用软中断int n和单步中断int3，以及into引发的中断和异常
+    // 这时候需要CPL必须小于等于DPL，也就是防止用户态程序随便调用内核的一些中断
+    SET_TGATE(g_idt[T_SYSCALL], __vectors[T_SYSCALL], GD_KTEXT, DPL_USER);
 
     // 设置idt寄存器
     lidt(&g_idt_desc);
@@ -241,8 +244,42 @@ static void trap_dispatch(struct trap_frame *tf)
     }
 }
 
+/* trap_in_kernel - test if trap happened in kernel */
+bool trap_in_kernel(struct trap_frame *tf)
+{
+    return (tf->tf_cs == (uint16_t)KERNEL_CS);
+}
+
 // 处理中断
 void trap(struct trap_frame *tf)
 {
-    trap_dispatch(tf);
+    // dispatch based on what type of trap occurred
+    // used for previous projects
+    if (g_cur_proc == NULL)
+    {
+        trap_dispatch(tf);
+    }
+    else
+    {
+        // keep a trapframe chain in stack
+        struct trap_frame *otf = g_cur_proc->tf;
+        g_cur_proc->tf = tf;
+
+        bool in_kernel = trap_in_kernel(tf);
+
+        trap_dispatch(tf);
+
+        g_cur_proc->tf = otf;
+        if (!in_kernel)
+        {
+            if (g_cur_proc->flags & PF_EXITING)
+            {
+                do_exit(-E_KILLED);
+            }
+            if (g_cur_proc->need_resched)
+            {
+                schedule();
+            }
+        }
+    }
 }
