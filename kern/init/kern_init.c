@@ -27,7 +27,6 @@ void kern_init(void)
     pic_init(); // 初始化中断控制器
     idt_init(); // 初始化中断描述符表
 
-    vmm_init();   // 初始化虚拟内存管理
     sched_init(); // 初始化调度器
     proc_init();  // 初始化进程模块
 

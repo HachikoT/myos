@@ -61,7 +61,7 @@ struct trap_frame
     uint16_t tf_ds;
     uint16_t tf_padding3;
     uint32_t tf_trapno;
-    // 触发中断时自动保存的数据
+    // 触发中断时自动保存的数据（对于异常8-14以及异常17都是硬件压入的，其他的是vector中手动压入的0，以便统一处理）
     uint32_t tf_err;
     uintptr_t tf_eip;
     uint16_t tf_cs;
@@ -134,9 +134,9 @@ struct gate_desc
     }
 
 // 中断门和陷阱门的唯一区别就是中断门在触发中断的时候会自动将eflags的IF位置0屏蔽中断，iret返回时自动恢复
-#define SET_IGATE(gate, off, ss, dpl) SET_GATE(gate, off, ss, 0, STS_IG32, dpl)          //中断门
-#define SET_TGATE(gate, off, ss, dpl) SET_GATE(gate, off, ss, 0, STS_TG32, dpl)          //陷阱门
-#define SET_CGATE(gate, off, ss, args, dpl) SET_GATE(gate, off, ss, args, STS_CG32, dpl) //调用门
+#define SET_IGATE(gate, off, ss, dpl) SET_GATE(gate, off, ss, 0, STS_IG32, dpl)          // 中断门
+#define SET_TGATE(gate, off, ss, dpl) SET_GATE(gate, off, ss, 0, STS_TG32, dpl)          // 陷阱门
+#define SET_CGATE(gate, off, ss, args, dpl) SET_GATE(gate, off, ss, args, STS_CG32, dpl) // 调用门
 
 void idt_init(void); // 初始化中断描述符表
 

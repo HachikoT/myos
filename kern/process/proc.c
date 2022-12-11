@@ -84,12 +84,17 @@ static struct proc_struct *alloc_proc(void)
         proc->cr3 = g_boot_cr3;
         proc->flags = 0;
         memset(proc->name, 0, PROC_NAME_LEN);
+        list_init(&(proc->list_link));
+        list_init(&(proc->hash_link));
+        proc->exit_code = 0;
         proc->wait_state = 0;
-        proc->cptr = proc->optr = proc->yptr = NULL;
+        proc->cptr = NULL;
+        proc->optr = NULL;
+        proc->yptr = NULL;
         proc->rq = NULL;
         list_init(&(proc->run_link));
         proc->time_slice = 0;
-        proc->run_pool.left = proc->run_pool.right = proc->run_pool.parent = NULL;
+        skew_heap_init(&(proc->run_pool));
         proc->stride = 0;
         proc->priority = 0;
         proc->filesp = NULL;
@@ -114,8 +119,7 @@ get_proc_name(struct proc_struct *proc)
 }
 
 // get_pid - alloc a unique pid for process
-static int
-get_pid(void)
+static int get_pid(void)
 {
     static_assert(MAX_PID > MAX_PROCESS);
     struct proc_struct *proc;
@@ -232,7 +236,7 @@ int kernel_thread(int (*fn)(void *), void *arg, uint32_t clone_flags)
 // 为进程分配内核栈8KB，用于用户进程中断用
 static int setup_kstack(struct proc_struct *proc)
 {
-    struct Page *page = alloc_pages(KSTACK_PAGE);
+    struct page_desc *page = alloc_pages(KSTACK_PAGE);
     if (page != NULL)
     {
         proc->kstack = (uintptr_t)page2kva(page);
@@ -372,9 +376,9 @@ bad_mm:
 
 // copy_thread - setup the trapframe on the  process's kernel stack top and
 //             - setup the kernel entry point and stack of process
-static void
-copy_thread(struct proc_struct *proc, uintptr_t esp, struct trap_frame *tf)
+static void copy_thread(struct proc_struct *proc, uintptr_t esp, struct trap_frame *tf)
 {
+
     proc->tf = (struct trap_frame *)(proc->kstack + KSTACK_SIZE) - 1;
     *(proc->tf) = *tf;
     proc->tf->tf_regs.reg_eax = 0;
@@ -421,7 +425,7 @@ int do_fork(uint32_t clone_flags, uintptr_t stack, struct trap_frame *tf)
     // 拷贝父进程的虚拟空间
     if (copy_mm(clone_flags, proc) != 0)
     {
-        goto bad_fork_cleanup_kstack;
+        goto bad_fork_cleanup_fs;
     }
 
     copy_thread(proc, stack, tf);
@@ -432,7 +436,6 @@ int do_fork(uint32_t clone_flags, uintptr_t stack, struct trap_frame *tf)
         proc->pid = get_pid();
         hash_proc(proc);
         set_links(proc);
-        n_process++;
     }
     local_intr_restore(intr_flag);
 
@@ -442,6 +445,8 @@ int do_fork(uint32_t clone_flags, uintptr_t stack, struct trap_frame *tf)
 fork_out:
     return ret;
 
+bad_fork_cleanup_fs:
+    put_fs(proc);
 bad_fork_cleanup_kstack:
     put_kstack(proc);
 bad_fork_cleanup_proc:
@@ -764,29 +769,57 @@ bad_mm:
     goto out;
 }
 
-// do_execve - call exit_mmap(mm)&put_pgdir(mm) to reclaim memory space of g_cur_proc process
+// do_execve - call exit_mmap(mm)&put_pgdir(mm) to reclaim memory space of current process
 //           - call load_icode to setup new memory space accroding binary prog.
-int do_execve(const char *name, size_t len, unsigned char *binary, size_t size)
+int do_execve(const char *name, int argc, const char **argv)
 {
+    static_assert(EXEC_MAX_ARG_LEN >= FS_MAX_FPATH_LEN);
     struct mm_struct *mm = g_cur_proc->mm;
-    if (!user_mem_check(mm, (uintptr_t)name, len, 0))
+    if (!(argc >= 1 && argc <= EXEC_MAX_ARG_NUM))
     {
         return -E_INVAL;
-    }
-    if (len > PROC_NAME_LEN)
-    {
-        len = PROC_NAME_LEN;
     }
 
     char local_name[PROC_NAME_LEN + 1];
     memset(local_name, 0, sizeof(local_name));
-    memcpy(local_name, name, len);
 
+    char *kargv[EXEC_MAX_ARG_NUM];
+    const char *path;
+
+    int ret = -E_INVAL;
+
+    lock_mm(mm);
+    if (name == NULL)
+    {
+        snprintf(local_name, sizeof(local_name), "<null> %d", g_cur_proc->pid);
+    }
+    else
+    {
+        if (!copy_string(mm, local_name, name, sizeof(local_name)))
+        {
+            unlock_mm(mm);
+            return ret;
+        }
+    }
+    if ((ret = copy_kargv(mm, argc, kargv, argv)) != 0)
+    {
+        unlock_mm(mm);
+        return ret;
+    }
+    path = argv[0];
+    unlock_mm(mm);
+    files_closeall(g_cur_proc->filesp);
+
+    /* sysfile_open will check the first argument path, thus we have to use a user-space pointer, and argv[0] may be incorrect */
+    int fd;
+    if ((ret = fd = sysfile_open(path, O_RDONLY)) < 0)
+    {
+        goto execve_exit;
+    }
     if (mm != NULL)
     {
         lcr3(g_boot_cr3);
-        mm->mm_count--;
-        if (mm->mm_count == 0)
+        if (mm_count_dec(mm) == 0)
         {
             exit_mmap(mm);
             put_pgdir(mm);
@@ -794,15 +827,18 @@ int do_execve(const char *name, size_t len, unsigned char *binary, size_t size)
         }
         g_cur_proc->mm = NULL;
     }
-    int ret;
-    if ((ret = load_icode(binary, size)) != 0)
+    ret = -E_NO_MEM;
+    ;
+    if ((ret = load_icode(fd, argc, kargv)) != 0)
     {
         goto execve_exit;
     }
+    put_kargv(argc, kargv);
     set_proc_name(g_cur_proc, local_name);
     return 0;
 
 execve_exit:
+    put_kargv(argc, kargv);
     do_exit(ret);
     panic("already exit: %e.\n", ret);
 }
@@ -868,20 +904,12 @@ static int kernel_execve(const char *name, const char **argv)
 // user_main - kernel thread used to exec a user program
 static int user_main(void *arg)
 {
-#ifdef TEST
-#ifdef TESTSCRIPT
-    KERNEL_EXECVE3(TEST, TESTSCRIPT);
-#else
-    KERNEL_EXECVE2(TEST);
-#endif
-#else
-    KERNEL_EXECVE(sh);
-#endif
+    KERNEL_EXECVE(user);
     panic("user_main execve failed.\n");
 }
 
 // init_main - the second kernel thread used to create user_main kernel threads
-static int init_main(void *arg)
+int init_main(void *arg)
 {
     int ret;
     if ((ret = vfs_set_bootfs("disk0:")) != 0)
@@ -919,10 +947,8 @@ static int init_main(void *arg)
 //           - create the second kernel thread init_main
 void proc_init(void)
 {
-    int i;
-
     list_init(&g_proc_list);
-    for (i = 0; i < HASH_LIST_SIZE; i++)
+    for (int i = 0; i < HASH_LIST_SIZE; i++)
     {
         list_init(g_hash_list + i);
     }
@@ -963,9 +989,10 @@ void cpu_idle(void)
 {
     while (1)
     {
-        if (g_cur_proc->need_resched)
-        {
-            schedule();
-        }
+        // if (g_cur_proc->need_resched)
+        // {
+        cprintf("idle proc\n");
+        schedule();
+        // }
     }
 }

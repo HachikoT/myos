@@ -10,6 +10,7 @@
 #include "kern/driver/picirq.h"
 #include "kern/mm/vmm.h"
 #include "kern/process/proc.h"
+#include "kern/syscall/syscall.h"
 
 #define TICK_NUM 100
 
@@ -20,7 +21,7 @@ static void print_ticks()
 
 // 中断向量表
 static struct gate_desc g_idt[256];
-static struct dt_desc g_idt_desc = {sizeof(g_idt) - 1, (uintptr_t)g_idt - KERN_BASE};
+static struct dt_desc g_idt_desc = {sizeof(g_idt) - 1, (uintptr_t)g_idt};
 
 // 初始化中断描述符表
 void idt_init(void)
@@ -156,14 +157,20 @@ print_pgfault(struct trap_frame *tf)
 
 static int pgfault_handler(struct trap_frame *tf)
 {
-
+    print_pgfault(tf);
+    struct mm_struct *mm;
     if (g_cur_proc == NULL)
     {
-        print_trap_frame(tf);
-        print_pgfault(tf);
-        panic("unhandled page fault.\n");
+        mm = check_mm_struct;
+        // print_trap_frame(tf);
+        // print_pgfault(tf);
+        // panic("unhandled page fault.\n");
     }
-    struct mm_struct *mm = g_cur_proc->mm;
+    else
+    {
+
+        mm = g_cur_proc->mm;
+    }
     // 缺页异常发生后
     // cr2寄存器会存储引起缺页异常的线性地址
     // 中断硬件压入的错误码
@@ -203,7 +210,7 @@ static void trap_dispatch(struct trap_frame *tf)
         }
         break;
     case T_SYSCALL:
-        syscall();
+        syscall(tf);
         break;
     case IRQ_OFFSET + IRQ_TIMER:
         g_ticks++;
@@ -212,11 +219,6 @@ static void trap_dispatch(struct trap_frame *tf)
             print_ticks();
         }
 
-        // if (ticks % TICK_NUM == 0)
-        // {
-        //     assert(g_cur_proc != NULL);
-        //     g_cur_proc->need_resched = 1;
-        // }
         break;
     // case IRQ_OFFSET + IRQ_COM1:
     //     c = cons_getc();
@@ -226,28 +228,10 @@ static void trap_dispatch(struct trap_frame *tf)
     //     c = cons_getc();
     //     cprintf("kbd [%03d] %c\n", c, c);
     //     break;
-    // // LAB1 CHALLENGE 1 : YOUR CODE you should modify below codes.
-    // case T_SWITCH_TOU:
-    //     if (tf->tf_cs != USER_CS)
-    //     {
-    //         switchk2u = *tf;
-    //         switchk2u.tf_cs = USER_CS;
-    //         switchk2u.tf_ds = switchk2u.tf_es = switchk2u.tf_ss = USER_DS;
-    //         switchk2u.tf_esp = (uint32_t)tf + sizeof(struct trap_frame) - 8;
-
-    //         // set eflags, make sure ucore can use io under user mode.
-    //         // if CPL > IOPL, then cpu will generate a general protection.
-    //         switchk2u.tf_eflags |= FL_IOPL_MASK;
-
-    //         // set temporary stack
-    //         // then iret will jump to the right stack
-    //         *((uint32_t *)tf - 1) = (uint32_t)&switchk2u;
-    //     }
-    //     break;
-    // case IRQ_OFFSET + IRQ_IDE1:
-    // case IRQ_OFFSET + IRQ_IDE2:
-    //     /* do nothing */
-    //     break;
+    case IRQ_OFFSET + IRQ_IDE1:
+    case IRQ_OFFSET + IRQ_IDE2:
+        /* do nothing */
+        break;
     default:
         // in kernel, it must be a mistake
         if ((tf->tf_cs & 3) == 0)

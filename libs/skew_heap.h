@@ -10,17 +10,6 @@ typedef struct skew_heap_entry skew_heap_entry_t;
 
 typedef int (*compare_f)(void *a, void *b);
 
-static inline void skew_heap_init(skew_heap_entry_t *a) __attribute__((always_inline));
-static inline skew_heap_entry_t *skew_heap_merge(
-    skew_heap_entry_t *a, skew_heap_entry_t *b,
-    compare_f comp);
-static inline skew_heap_entry_t *skew_heap_insert(
-    skew_heap_entry_t *a, skew_heap_entry_t *b,
-    compare_f comp) __attribute__((always_inline));
-static inline skew_heap_entry_t *skew_heap_remove(
-    skew_heap_entry_t *a, skew_heap_entry_t *b,
-    compare_f comp) __attribute__((always_inline));
-
 static inline void
 skew_heap_init(skew_heap_entry_t *a)
 {

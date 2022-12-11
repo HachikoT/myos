@@ -143,7 +143,7 @@ static int
 sfs_init_freemap(struct device *dev, struct bitmap *freemap, uint32_t blkno, uint32_t nblks, void *blk_buffer)
 {
     size_t len;
-    void *data = bitmap_getdata(freemap, &len);
+    char *data = bitmap_getdata(freemap, &len);
     assert(data != NULL && len == nblks * SFS_BLKSIZE);
     while (nblks != 0)
     {
@@ -152,7 +152,9 @@ sfs_init_freemap(struct device *dev, struct bitmap *freemap, uint32_t blkno, uin
         {
             return ret;
         }
-        blkno++, nblks--, data += SFS_BLKSIZE;
+        blkno++;
+        nblks--;
+        data += SFS_BLKSIZE;
     }
     return 0;
 }

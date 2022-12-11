@@ -31,14 +31,12 @@ sys_wait(uint32_t arg[])
     return do_wait(pid, store);
 }
 
-static int
-sys_exec(uint32_t arg[])
+static int sys_exec(uint32_t arg[])
 {
     const char *name = (const char *)arg[0];
-    size_t len = (size_t)arg[1];
-    unsigned char *binary = (unsigned char *)arg[2];
-    size_t size = (size_t)arg[3];
-    return do_execve(name, len, binary, size);
+    int argc = (int)arg[1];
+    const char **argv = (const char **)arg[2];
+    return do_execve(name, argc, argv);
 }
 
 static int
@@ -96,9 +94,8 @@ static int (*syscalls[])(uint32_t arg[]) = {
 
 #define NUM_SYSCALLS ((sizeof(syscalls)) / (sizeof(syscalls[0])))
 
-void syscall(void)
+void syscall(struct trap_frame *tf)
 {
-    struct trap_frame *tf = g_cur_proc->tf;
     uint32_t arg[5];
     int num = tf->tf_regs.reg_eax;
     if (num >= 0 && num < NUM_SYSCALLS)

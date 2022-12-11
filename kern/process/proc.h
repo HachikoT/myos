@@ -98,7 +98,4 @@ struct proc_struct *find_proc(int pid);
 int do_fork(uint32_t clone_flags, uintptr_t stack, struct trap_frame *tf);
 int do_exit(int error_code);
 
-// FOR LAB6, set the process's priority (bigger value will get more CPU time)
-void lab6_set_priority(uint32_t priority);
-
 #endif /* !__KERN_PROCESS_PROC_H__ */

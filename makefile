@@ -21,7 +21,7 @@ export AR ARFLAGS
 
 # myos
 MYOS_TARGET := $(BIN_DIR)/myos.img
-MYOS_MODULES := boot kernel
+MYOS_MODULES := boot kernel swap sfs
 
 .PHONY:myos
 myos:$(MYOS_TARGET)
@@ -63,6 +63,39 @@ $(KERNEL_TARGET):$(KERNEL_LIBS) | $(BIN_DIR)
 
 $(KERNEL_LIBS)::
 	@make -s -f $(TOP_DIR)/$(if $(filter-out libs,$(KERNEL_MODULE)),kern/)$(KERNEL_MODULE)/makefile MODULE=$(KERNEL_MODULE)
+
+# swap
+SWAP_TARGET := $(BIN_DIR)/swap.img
+
+.PHONY:swap
+swap:${SWAP_TARGET}
+
+${SWAP_TARGET}:
+	@dd if=/dev/zero of=$@ bs=1M count=128
+
+# sfs
+SFS_TARGET := $(BIN_DIR)/sfs.img
+SFS_ROOT := $(BIN_DIR)/sfs_root
+
+.PHONY:sfs
+sfs:${SFS_TARGET}
+
+${SFS_TARGET}:user
+	@mkdir -p ${SFS_ROOT}
+	@make -s -f $(TOP_DIR)/kern/mksfs/makefile MODULE=mksfs
+	@cp $(BIN_DIR)/user ${SFS_ROOT}/user
+	@dd if=/dev/zero of=$@ bs=1M count=128
+	@${BUILD_DIR}/mksfs/lib/mksfs $@ ${SFS_ROOT}
+
+# user
+USER_TARGET := $(BIN_DIR)/user
+
+.PHONY:user
+user:${USER_TARGET}
+
+${USER_TARGET}:
+	@make -s -f $(TOP_DIR)/user/libs/makefile MODULE=user
+	@cp ${BUILD_DIR}/user/lib/user $@
 
 # 自动生成bin目录
 $(BIN_DIR):

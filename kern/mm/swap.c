@@ -45,7 +45,7 @@ int swap_init(void)
      {
           swap_init_ok = 1;
           cprintf("SWAP: manager = %s\n", sm->name);
-          check_swap();
+          // check_swap();
      }
 
      return r;

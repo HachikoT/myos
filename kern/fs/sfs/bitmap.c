@@ -4,6 +4,7 @@
 #include "kern/mm/kmalloc.h"
 #include "libs/error.h"
 #include "kern/debug/assert.h"
+#include "kern/mm/pmm.h"
 
 #define WORD_TYPE uint32_t
 #define WORD_BITS (sizeof(WORD_TYPE) * CHAR_BIT)
@@ -52,6 +53,7 @@ bitmap_create(uint32_t nbits)
             bitmap->map[ix] ^= (1 << overbits);
         }
     }
+
     return bitmap;
 }
 

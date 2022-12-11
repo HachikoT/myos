@@ -9,20 +9,23 @@ static inline uint8_t inb(uint16_t port)
     uint8_t data;
     __asm__ __volatile__("inb %1, %0"
                          : "=a"(data)
-                         : "d"(port));
+                         : "d"(port)
+                         : "memory");
     return data;
 }
 
 // 向指定IO端口写一个字节
 static inline void outb(uint16_t port, uint8_t data)
 {
-    __asm__ __volatile__("outb %0, %1" ::"a"(data), "d"(port));
+    __asm__ __volatile__("outb %0, %1" ::"a"(data), "d"(port)
+                         : "memory");
 }
 
 // 写两个字节数据到指定IO端口
 static inline void outw(uint16_t port, uint16_t data)
 {
-    __asm__ __volatile__("outw %0, %1" ::"a"(data), "d"(port));
+    __asm__ __volatile__("outw %0, %1" ::"a"(data), "d"(port)
+                         : "memory");
 }
 
 // 从指定端口读取cnt次4字节的数据到指定的内存地址
@@ -55,7 +58,8 @@ static inline void sti(void)
 // 禁止外部中断
 static inline void cli(void)
 {
-    __asm__ __volatile__("cli");
+    __asm__ __volatile__("cli" ::
+                             : "memory");
 }
 
 // 用来描述gdt和idt和ldt表信息
@@ -68,7 +72,8 @@ struct dt_desc
 // 将中断向量表地址加载到IDTR寄存器
 static inline void lidt(struct dt_desc *pd)
 {
-    __asm__ __volatile__("lidt (%0)" ::"r"(pd));
+    __asm__ __volatile__("lidt (%0)" ::"r"(pd)
+                         : "memory");
 }
 
 static inline void ridt(struct dt_desc *pd)
@@ -80,7 +85,8 @@ static inline void ridt(struct dt_desc *pd)
 // 设置任务状态段选择子
 static inline void ltr(uint16_t sel)
 {
-    __asm__ __volatile__("ltr %0" ::"r"(sel));
+    __asm__ __volatile__("ltr %0" ::"r"(sel)
+                         : "memory");
 }
 
 #define do_div(n, base) ({                               \
@@ -107,7 +113,7 @@ static inline void ltr(uint16_t sel)
 // eflags寄存器
 //
 // +-10-+--1-+--1--+--1--+--1-+--1-+--1-+-1-+--1-+---2--+--1-+--1-+--1-+--1-+--1-+--1-+-1-+--1-+-1-+--1-+-1-+--1-+
-// | 0  | ID | VIP | VIF | AC | VM | RF | 0 | NT | IOPL | OF | DF | IF | TF | SF | ZF | 0 | AF | 0 | PF | 0 | CF |
+// | 0  | ID | VIP | VIF | AC | VM | RF | 0 | NT | IOPL | OF | DF | IF | TF | SF | ZF | 0 | AF | 0 | PF | 1 | CF |
 // +----+----+-----+-----+----+----+----+---+----+------+----+----+----+----+----+----+---+----+---+----+---+----+
 //
 // CF：进位标志位。无符号数运算时，运算结果的最高有效位向前有借位或进位。

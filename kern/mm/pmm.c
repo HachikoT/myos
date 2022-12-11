@@ -262,21 +262,12 @@ struct page_desc *alloc_pages(size_t n)
     struct page_desc *page = NULL;
     bool intr_flag;
 
-    while (1)
+    local_intr_save(intr_flag);
     {
-        local_intr_save(intr_flag);
-        {
-            page = g_pmm_mgr->alloc_pages(n);
-        }
-        local_intr_restore(intr_flag);
-
-        if (page != NULL || n > 1 || swap_init_ok == 0)
-            break;
-
-        extern struct mm_struct *check_mm_struct;
-        // cprintf("page %x, call swap_out in alloc_pages %d\n",page, n);
-        swap_out(check_mm_struct, n, 0);
+        page = g_pmm_mgr->alloc_pages(n);
     }
+    local_intr_restore(intr_flag);
+
     return page;
 }
 

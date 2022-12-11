@@ -13,10 +13,7 @@ static struct run_queue __rq;
 static inline void
 sched_class_enqueue(struct proc_struct *proc)
 {
-    if (proc != g_idle_proc)
-    {
-        g_sched_class->enqueue(g_rq, proc);
-    }
+    g_sched_class->enqueue(g_rq, proc);
 }
 
 static inline void
@@ -74,7 +71,7 @@ void wakeup_proc(struct proc_struct *proc)
         }
         else
         {
-            warn("wakeup runnable process.\n");
+            panic("wakeup runnable process.\n");
         }
     }
     local_intr_restore(intr_flag);
@@ -94,10 +91,6 @@ void schedule(void)
         if ((next = sched_class_pick_next()) != NULL)
         {
             sched_class_dequeue(next);
-        }
-        if (next == NULL)
-        {
-            next = g_idle_proc;
         }
         next->runs++;
         if (next != g_cur_proc)

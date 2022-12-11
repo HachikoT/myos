@@ -34,7 +34,7 @@ __trapret:
     popl %es
     popl %ds
 
-    // 出栈中断号
+    // 出栈中断号和错误码
     addl $0x8, %esp
     iret
 

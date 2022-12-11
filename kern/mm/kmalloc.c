@@ -193,21 +193,9 @@ static void slob_free(void *block, int size)
 	spin_unlock_irqrestore(&slob_lock, flags);
 }
 
-void check_slab(void)
-{
-	cprintf("check_slab() success\n");
-}
-
-void slab_init(void)
+void kmalloc_init(void)
 {
 	cprintf("use SLOB allocator\n");
-	check_slab();
-}
-
-inline void
-kmalloc_init(void)
-{
-	slab_init();
 	cprintf("kmalloc_init() succeeded!\n");
 }
 
@@ -263,8 +251,7 @@ static void *__kmalloc(size_t size, gfp_t gfp)
 	return 0;
 }
 
-void *
-kmalloc(size_t size)
+void *kmalloc(size_t size)
 {
 	return __kmalloc(size, 0);
 }
